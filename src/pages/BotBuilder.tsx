@@ -43,6 +43,18 @@ const CANDLE_INTERVALS = [
   '1 hour',
 ];
 
+const RUN_ONCE_SET = [
+  'Initial Amount',
+  'Win Amount',
+  'Expected Profit',
+  'Stop Loss',
+  'Martingale Level',
+];
+
+const DURATION_TYPES = ['Ticks', 'Seconds', 'Minutes', 'Hours', 'Days'];
+
+const STAKE_TYPES = ['Initial Amount', 'Custom'];
+
 /* ---------- Types ---------- */
 type BlockType = 'trade_params' | 'purchase' | 'sell' | 'restart';
 
@@ -50,10 +62,18 @@ type Block = {
   id: string;
   type: BlockType;
   open: boolean;
+  // trade_params
   market?: string;
   tradeType?: string;
   contractType?: string;
   candleInterval?: string;
+  restartBuySell?: boolean;
+  restartLastTrade?: boolean;
+  runOnceValues?: Record<string, string | number>;
+  durationType?: string;
+  durationValue?: number;
+  stakeType?: string;
+  // purchase
   direction?: 'Rise' | 'Fall';
 };
 
@@ -75,6 +95,18 @@ const createBlock = (type: BlockType): Block => {
     base.tradeType = 'Up/Down › Rise/Fall';
     base.contractType = 'Both';
     base.candleInterval = '1 minute';
+    base.restartBuySell = false;
+    base.restartLastTrade = true;
+    base.runOnceValues = {
+      'Initial Amount': 0.35,
+      'Win Amount': 0.35,
+      'Expected Profit': 7,
+      'Stop Loss': 999,
+      'Martingale Level': 1.05,
+    };
+    base.durationType = 'Ticks';
+    base.durationValue = 7;
+    base.stakeType = 'Initial Amount';
   }
   if (type === 'purchase') {
     base.direction = 'Rise';
@@ -84,7 +116,6 @@ const createBlock = (type: BlockType): Block => {
 
 /* ---------- Main page ---------- */
 export default function BotBuilder() {
-  /* Blocks — restored from localStorage on first load */
   const [blocks, setBlocks] = useState<Block[]>(() => {
     const saved = loadBot();
     if (saved && saved.blocks.length > 0) {
@@ -112,7 +143,6 @@ export default function BotBuilder() {
   const [stake, setStake] = useState(0);
   const [payout, setPayout] = useState(0);
 
-  /* ----- AUTO-SAVE ----- */
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
@@ -125,7 +155,6 @@ export default function BotBuilder() {
     return () => clearTimeout(t);
   }, [blocks]);
 
-  /* ---- block actions ---- */
   const addBlock = (type: BlockType) => {
     setBlocks((bs) => [...bs, createBlock(type)]);
   };
@@ -146,7 +175,6 @@ export default function BotBuilder() {
     );
   };
 
-  /* ---- manual save / load ---- */
   const handleSave = () => {
     saveBot(blocks);
     setLastSavedAt(Date.now());
@@ -164,7 +192,6 @@ export default function BotBuilder() {
     setLastSavedAt(saved.savedAt);
   };
 
-  /* ---- apply quick-strategy preset ---- */
   const applyPreset = (presetId: string) => {
     const trade = createBlock('trade_params');
     const purchase = createBlock('purchase');
@@ -173,11 +200,9 @@ export default function BotBuilder() {
 
     switch (presetId) {
       case 'rise_fall':
-        // default setup
         break;
       case 'even_odd':
         trade.tradeType = 'Digits › Even/Odd';
-        trade.contractType = 'Both';
         break;
       case 'over_under':
         trade.tradeType = 'Digits › Over/Under';
@@ -200,7 +225,6 @@ export default function BotBuilder() {
     setIsRunning(false);
   };
 
-  /* ---- run handler ---- */
   const handleRun = () => {
     if (isRunning) {
       setIsRunning(false);
@@ -313,7 +337,6 @@ export default function BotBuilder() {
           >
             ↻
           </button>
-
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
             title="Load saved bot"
@@ -321,7 +344,6 @@ export default function BotBuilder() {
           >
             📁
           </button>
-
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
             title="Save bot"
@@ -329,7 +351,6 @@ export default function BotBuilder() {
           >
             💾
           </button>
-
           {['📋', '↶', '↷', '⊞', '⊟', '🔍', '🔎'].map((icon, i) => (
             <button
               key={i}
@@ -338,7 +359,6 @@ export default function BotBuilder() {
               {icon}
             </button>
           ))}
-
           <div className="ml-auto text-xs">
             {savedFlash ? (
               <span className="text-green-600 font-medium">✓ saved</span>
@@ -351,7 +371,7 @@ export default function BotBuilder() {
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 overflow-auto p-6 relative">
+        <div className="flex-1 overflow-auto p-6 relative pb-32">
           {blocks.length === 0 && (
             <div className="text-center text-gray-400 text-sm mt-24">
               No blocks on the canvas. <br />
@@ -370,7 +390,8 @@ export default function BotBuilder() {
             />
           ))}
 
-          <button className="fixed bottom-24 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
+          {/* AI button bottom-left of canvas */}
+          <button className="absolute bottom-6 left-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
             AI
           </button>
         </div>
@@ -378,30 +399,42 @@ export default function BotBuilder() {
 
       {/* ===== RIGHT PANEL ===== */}
       <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-        <div className="flex flex-col gap-2 px-3 pt-3">
-          <div className="flex justify-end">
-            <button
-              onClick={handleRun}
-              className={`${
-                isRunning
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-teal-500 hover:bg-teal-600'
-              } text-white text-sm font-semibold px-4 py-1.5 rounded transition`}
-            >
-              {isRunning ? '■ Stop' : '▶ Run'}
-            </button>
+        {/* Status strip */}
+        <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
+          <button
+            onClick={handleRun}
+            className={`${
+              isRunning
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-teal-500 hover:bg-teal-600'
+            } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0`}
+          >
+            ▶ Run
+          </button>
+          <div className="flex-1 text-xs text-gray-500">
+            {isRunning ? (
+              <>
+                <div className="flex justify-between mb-1">
+                  <span>Bot is running…</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+                <div className="h-1 bg-gray-100 rounded overflow-hidden">
+                  <div
+                    className="h-full bg-teal-500 transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between">
+                <span>Bot is not running</span>
+                <span>0% complete</span>
+              </div>
+            )}
           </div>
-          {isRunning && (
-            <div className="h-1 bg-gray-100 rounded overflow-hidden">
-              <div
-                className="h-full bg-teal-500 transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
         </div>
 
-        <div className="flex border-b border-gray-200 mt-3 text-sm">
+        <div className="flex border-b border-gray-200 text-sm">
           <button className="px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium">
             Summary
           </button>
@@ -460,7 +493,6 @@ export default function BotBuilder() {
         </div>
       </aside>
 
-      {/* ===== QUICK STRATEGY MODAL ===== */}
       <QuickStrategyModal
         open={showQuickStrategy}
         onClose={() => setShowQuickStrategy(false)}
@@ -490,7 +522,7 @@ function BlockRenderer({
     <div className="group relative w-fit">
       <button
         onClick={onToggle}
-        className="bg-[#0b3d91] hover:bg-[#0a357f] text-white rounded-md px-3 py-2 text-sm font-semibold w-fit mb-2 flex items-center gap-2 transition"
+        className="bg-[#0b3d91] hover:bg-[#0a357f] text-white rounded-t-md px-3 py-2 text-sm font-semibold w-fit flex items-center gap-2 transition"
       >
         <span>
           📋 {index}. {label}
@@ -499,9 +531,10 @@ function BlockRenderer({
       </button>
 
       {block.open && (
-        <div className="bg-white border-l-4 border-[#0b3d91] rounded-md p-4 mb-4 w-fit shadow-sm text-sm">
+        <div className="bg-white border-l-4 border-[#0b3d91] rounded-b-md rounded-tr-md p-4 mb-4 w-fit shadow-sm text-sm">
+          {/* ---- TRADE PARAMETERS ---- */}
           {block.type === 'trade_params' && (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <SelectField
                 label="Market"
                 value={block.market ?? ''}
@@ -526,9 +559,94 @@ function BlockRenderer({
                 onChange={(v) => onUpdate({ candleInterval: v })}
                 options={CANDLE_INTERVALS}
               />
+
+              {/* Checkbox rows */}
+              <CheckboxRow
+                label="Restart buy/sell on error (disable for better performance):"
+                checked={!!block.restartBuySell}
+                onChange={(c) => onUpdate({ restartBuySell: c })}
+              />
+              <CheckboxRow
+                label="Restart last trade on error (bot ignores the unsuccessful trade):"
+                checked={!!block.restartLastTrade}
+                onChange={(c) => onUpdate({ restartLastTrade: c })}
+              />
+
+              {/* Run once at start section */}
+              <SectionHeader label="Run once at start:" />
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <span className="bg-gray-100 px-2 py-1 rounded">
+                    Notify blue with sound: Sil…
+                  </span>
+                </div>
+                {RUN_ONCE_SET.map((name) => (
+                  <div key={name} className="flex items-center gap-2">
+                    <span className="text-gray-500 w-6">set</span>
+                    <span className="bg-gray-100 px-2 py-1 rounded text-gray-700 w-40">
+                      {name}
+                    </span>
+                    <span className="text-gray-500">to</span>
+                    <input
+                      type="text"
+                      value={String(block.runOnceValues?.[name] ?? '')}
+                      onChange={(e) =>
+                        onUpdate({
+                          runOnceValues: {
+                            ...(block.runOnceValues ?? {}),
+                            [name]: e.target.value,
+                          },
+                        })
+                      }
+                      className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-24"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Trade options section */}
+              <SectionHeader label="Trade options:" />
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 w-20">Duration:</span>
+                <select
+                  value={block.durationType ?? 'Ticks'}
+                  onChange={(e) => onUpdate({ durationType: e.target.value })}
+                  className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer"
+                >
+                  {DURATION_TYPES.map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={block.durationValue ?? 7}
+                  onChange={(e) =>
+                    onUpdate({ durationValue: Number(e.target.value) })
+                  }
+                  className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-20"
+                />
+                <span className="text-gray-500 ml-3 w-14">Stake:</span>
+                <span className="bg-gray-100 px-2 py-1 rounded text-gray-700">
+                  USD
+                </span>
+                <select
+                  value={block.stakeType ?? 'Initial Amount'}
+                  onChange={(e) => onUpdate({ stakeType: e.target.value })}
+                  className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer"
+                >
+                  {STAKE_TYPES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
+          {/* ---- PURCHASE ---- */}
           {block.type === 'purchase' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Purchase</span>
@@ -547,6 +665,7 @@ function BlockRenderer({
             </div>
           )}
 
+          {/* ---- SELL ---- */}
           {block.type === 'sell' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">if</span>
@@ -554,9 +673,13 @@ function BlockRenderer({
                 Sell is available
               </span>
               <span className="text-gray-500">then</span>
+              <button className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center">
+                +
+              </button>
             </div>
           )}
 
+          {/* ---- RESTART ---- */}
           {block.type === 'restart' && (
             <span className="bg-gray-100 px-2 py-1 rounded text-gray-700">
               Trade again
@@ -582,6 +705,36 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div>
       <div className="text-gray-500 font-medium">{label}</div>
       <div className="text-navy font-semibold mt-1">{value}</div>
+    </div>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="bg-[#0b3d91] text-white text-xs font-semibold px-3 py-1.5 rounded-sm -mx-4 mt-3 mb-2 w-[calc(100%+2rem)]">
+      {label}
+    </div>
+  );
+}
+
+function CheckboxRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (c: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-1">
+      <span className="text-gray-500 text-xs">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 accent-blue-600 cursor-pointer"
+      />
     </div>
   );
 }
