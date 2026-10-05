@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { saveBot, loadBot, formatAgo } from '../lib/storage';
 
 /* ---------- Option lists ---------- */
 const MARKETS = [
@@ -42,22 +43,16 @@ const CANDLE_INTERVALS = [
 ];
 
 /* ---------- Types ---------- */
-type BlockType =
-  | 'trade_params'
-  | 'purchase'
-  | 'sell'
-  | 'restart';
+type BlockType = 'trade_params' | 'purchase' | 'sell' | 'restart';
 
 type Block = {
-  id: string;        // unique key
+  id: string;
   type: BlockType;
   open: boolean;
-  // trade_params state
   market?: string;
   tradeType?: string;
   contractType?: string;
   candleInterval?: string;
-  // purchase state
   direction?: 'Rise' | 'Fall';
 };
 
@@ -69,7 +64,7 @@ const BLOCK_LABELS: Record<BlockType, string> = {
 };
 
 let idCounter = 1;
-const nextId = () => `block-${idCounter++}`;
+const nextId = () => `block-${Date.now()}-${idCounter++}`;
 
 const createBlock = (type: BlockType): Block => {
   const base: Block = { id: nextId(), type, open: true };
@@ -88,13 +83,23 @@ const createBlock = (type: BlockType): Block => {
 
 /* ---------- Main page ---------- */
 export default function BotBuilder() {
-  /* Blocks on the canvas */
-  const [blocks, setBlocks] = useState<Block[]>([
-    createBlock('trade_params'),
-    createBlock('purchase'),
-    createBlock('sell'),
-    createBlock('restart'),
-  ]);
+  /* Blocks — restored from localStorage on first load */
+  const [blocks, setBlocks] = useState<Block[]>(() => {
+    const saved = loadBot();
+    if (saved && saved.blocks.length > 0) {
+      return saved.blocks as Block[];
+    }
+    return [
+      createBlock('trade_params'),
+      createBlock('purchase'),
+      createBlock('sell'),
+      createBlock('restart'),
+    ];
+  });
+
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const firstRun = useRef(true);
 
   /* Run state */
   const [isRunning, setIsRunning] = useState(false);
@@ -104,6 +109,19 @@ export default function BotBuilder() {
   const [losses, setLosses] = useState(0);
   const [stake, setStake] = useState(0);
   const [payout, setPayout] = useState(0);
+
+  /* ----- AUTO-SAVE on any block change ----- */
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    saveBot(blocks);
+    setLastSavedAt(Date.now());
+    setSavedFlash(true);
+    const t = setTimeout(() => setSavedFlash(false), 800);
+    return () => clearTimeout(t);
+  }, [blocks]);
 
   /* ---- block actions ---- */
   const addBlock = (type: BlockType) => {
@@ -124,6 +142,34 @@ export default function BotBuilder() {
     setBlocks((bs) =>
       bs.map((b) => (b.id === id ? { ...b, ...patch } : b))
     );
+  };
+
+  /* ---- manual save / load ---- */
+  const handleSave = () => {
+    saveBot(blocks);
+    setLastSavedAt(Date.now());
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 800);
+  };
+
+  const handleLoad = () => {
+    const saved = loadBot();
+    if (!saved || saved.blocks.length === 0) {
+      alert('No saved bot found.');
+      return;
+    }
+    setBlocks(saved.blocks as Block[]);
+    setLastSavedAt(saved.savedAt);
+  };
+
+  const handleReset = () => {
+    setRuns(0);
+    setWins(0);
+    setLosses(0);
+    setStake(0);
+    setPayout(0);
+    setProgress(0);
+    setIsRunning(false);
   };
 
   /* ---- run handler ---- */
@@ -162,16 +208,6 @@ export default function BotBuilder() {
         setProgress(0);
       }
     }, 50);
-  };
-
-  const handleReset = () => {
-    setRuns(0);
-    setWins(0);
-    setLosses(0);
-    setStake(0);
-    setPayout(0);
-    setProgress(0);
-    setIsRunning(false);
   };
 
   return (
@@ -232,16 +268,55 @@ export default function BotBuilder() {
       <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
-          {['↻', '📁', '💾', '📋', '↶', '↷', '⊞', '⊟', '🔍', '🔎'].map(
-            (icon, i) => (
-              <button
-                key={i}
-                className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
-              >
-                {icon}
-              </button>
-            )
-          )}
+          <button
+            className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            title="Reset blocks"
+            onClick={() =>
+              setBlocks([
+                createBlock('trade_params'),
+                createBlock('purchase'),
+                createBlock('sell'),
+                createBlock('restart'),
+              ])
+            }
+          >
+            ↻
+          </button>
+
+          <button
+            className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            title="Load saved bot"
+            onClick={handleLoad}
+          >
+            📁
+          </button>
+
+          <button
+            className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            title="Save bot"
+            onClick={handleSave}
+          >
+            💾
+          </button>
+
+          {['📋', '↶', '↷', '⊞', '⊟', '🔍', '🔎'].map((icon, i) => (
+            <button
+              key={i}
+              className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            >
+              {icon}
+            </button>
+          ))}
+
+          <div className="ml-auto text-xs">
+            {savedFlash ? (
+              <span className="text-green-600 font-medium">✓ saved</span>
+            ) : lastSavedAt ? (
+              <span className="text-gray-400">{formatAgo(lastSavedAt)}</span>
+            ) : (
+              <span className="text-gray-300">auto-save on</span>
+            )}
+          </div>
         </div>
 
         {/* Canvas */}
@@ -264,7 +339,6 @@ export default function BotBuilder() {
             />
           ))}
 
-          {/* Floating AI button */}
           <button className="fixed bottom-24 left-1/2 -translate-x-1/2 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
             AI
           </button>
@@ -376,7 +450,6 @@ function BlockRenderer({
 
   return (
     <div className="group relative w-fit">
-      {/* Header */}
       <button
         onClick={onToggle}
         className="bg-[#0b3d91] hover:bg-[#0a357f] text-white rounded-md px-3 py-2 text-sm font-semibold w-fit mb-2 flex items-center gap-2 transition"
@@ -387,7 +460,6 @@ function BlockRenderer({
         <span className="text-xs opacity-80">{block.open ? '▾' : '▸'}</span>
       </button>
 
-      {/* Body */}
       {block.open && (
         <div className="bg-white border-l-4 border-[#0b3d91] rounded-md p-4 mb-4 w-fit shadow-sm text-sm">
           {block.type === 'trade_params' && (
@@ -455,7 +527,6 @@ function BlockRenderer({
         </div>
       )}
 
-      {/* Trash on hover */}
       <button
         onClick={onDelete}
         title="Delete block"
