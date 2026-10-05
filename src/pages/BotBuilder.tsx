@@ -51,6 +51,14 @@ const RUN_ONCE_SET = [
   'Martingale Level',
 ];
 
+const RUN_ONCE_DEFAULTS: Record<string, string | number> = {
+  'Initial Amount': 0.35,
+  'Win Amount': 0.35,
+  'Expected Profit': 7,
+  'Stop Loss': 999,
+  'Martingale Level': 1.05,
+};
+
 const DURATION_TYPES = ['Ticks', 'Seconds', 'Minutes', 'Hours', 'Days'];
 
 const STAKE_TYPES = ['Initial Amount', 'Custom'];
@@ -62,7 +70,6 @@ type Block = {
   id: string;
   type: BlockType;
   open: boolean;
-  // trade_params
   market?: string;
   tradeType?: string;
   contractType?: string;
@@ -73,7 +80,6 @@ type Block = {
   durationType?: string;
   durationValue?: number;
   stakeType?: string;
-  // purchase
   direction?: 'Rise' | 'Fall';
 };
 
@@ -95,15 +101,9 @@ const createBlock = (type: BlockType): Block => {
     base.tradeType = 'Up/Down › Rise/Fall';
     base.contractType = 'Both';
     base.candleInterval = '1 minute';
-    base.restartBuySell = false;
+    base.restartBuySell = true;
     base.restartLastTrade = true;
-    base.runOnceValues = {
-      'Initial Amount': 0.35,
-      'Win Amount': 0.35,
-      'Expected Profit': 7,
-      'Stop Loss': 999,
-      'Martingale Level': 1.05,
-    };
+    base.runOnceValues = { ...RUN_ONCE_DEFAULTS };
     base.durationType = 'Ticks';
     base.durationValue = 7;
     base.stakeType = 'Initial Amount';
@@ -371,7 +371,7 @@ export default function BotBuilder() {
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 overflow-auto p-6 relative pb-32">
+        <div className="flex-1 overflow-auto p-6 relative pb-40">
           {blocks.length === 0 && (
             <div className="text-center text-gray-400 text-sm mt-24">
               No blocks on the canvas. <br />
@@ -390,8 +390,8 @@ export default function BotBuilder() {
             />
           ))}
 
-          {/* AI button bottom-left of canvas */}
-          <button className="absolute bottom-6 left-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
+          {/* AI button moved to bottom-right so it doesn't cover Trade options */}
+          <button className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
             AI
           </button>
         </div>
@@ -399,7 +399,6 @@ export default function BotBuilder() {
 
       {/* ===== RIGHT PANEL ===== */}
       <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-        {/* Status strip */}
         <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
           <button
             onClick={handleRun}
@@ -532,7 +531,6 @@ function BlockRenderer({
 
       {block.open && (
         <div className="bg-white border-l-4 border-[#0b3d91] rounded-b-md rounded-tr-md p-4 mb-4 w-fit shadow-sm text-sm">
-          {/* ---- TRADE PARAMETERS ---- */}
           {block.type === 'trade_params' && (
             <div className="space-y-2">
               <SelectField
@@ -560,19 +558,17 @@ function BlockRenderer({
                 options={CANDLE_INTERVALS}
               />
 
-              {/* Checkbox rows */}
               <CheckboxRow
                 label="Restart buy/sell on error (disable for better performance):"
-                checked={!!block.restartBuySell}
+                checked={block.restartBuySell ?? true}
                 onChange={(c) => onUpdate({ restartBuySell: c })}
               />
               <CheckboxRow
                 label="Restart last trade on error (bot ignores the unsuccessful trade):"
-                checked={!!block.restartLastTrade}
+                checked={block.restartLastTrade ?? true}
                 onChange={(c) => onUpdate({ restartLastTrade: c })}
               />
 
-              {/* Run once at start section */}
               <SectionHeader label="Run once at start:" />
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -580,31 +576,38 @@ function BlockRenderer({
                     Notify blue with sound: Sil…
                   </span>
                 </div>
-                {RUN_ONCE_SET.map((name) => (
-                  <div key={name} className="flex items-center gap-2">
-                    <span className="text-gray-500 w-6">set</span>
-                    <span className="bg-gray-100 px-2 py-1 rounded text-gray-700 w-40">
-                      {name}
-                    </span>
-                    <span className="text-gray-500">to</span>
-                    <input
-                      type="text"
-                      value={String(block.runOnceValues?.[name] ?? '')}
-                      onChange={(e) =>
-                        onUpdate({
-                          runOnceValues: {
-                            ...(block.runOnceValues ?? {}),
-                            [name]: e.target.value,
-                          },
-                        })
-                      }
-                      className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-24"
-                    />
-                  </div>
-                ))}
+                {RUN_ONCE_SET.map((name) => {
+                  const raw = block.runOnceValues?.[name];
+                  const value =
+                    raw !== undefined && raw !== ''
+                      ? raw
+                      : RUN_ONCE_DEFAULTS[name] ?? '';
+                  return (
+                    <div key={name} className="flex items-center gap-2">
+                      <span className="text-gray-500 w-6">set</span>
+                      <span className="bg-gray-100 px-2 py-1 rounded text-gray-700 w-40">
+                        {name}
+                      </span>
+                      <span className="text-gray-500">to</span>
+                      <input
+                        type="text"
+                        value={String(value)}
+                        onChange={(e) =>
+                          onUpdate({
+                            runOnceValues: {
+                              ...(block.runOnceValues ??
+                                RUN_ONCE_DEFAULTS),
+                              [name]: e.target.value,
+                            },
+                          })
+                        }
+                        className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-24"
+                      />
+                    </div>
+                  );
+                })}
               </div>
 
-              {/* Trade options section */}
               <SectionHeader label="Trade options:" />
               <div className="flex items-center gap-2">
                 <span className="text-gray-500 w-20">Duration:</span>
@@ -646,7 +649,6 @@ function BlockRenderer({
             </div>
           )}
 
-          {/* ---- PURCHASE ---- */}
           {block.type === 'purchase' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Purchase</span>
@@ -665,7 +667,6 @@ function BlockRenderer({
             </div>
           )}
 
-          {/* ---- SELL ---- */}
           {block.type === 'sell' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">if</span>
@@ -679,7 +680,6 @@ function BlockRenderer({
             </div>
           )}
 
-          {/* ---- RESTART ---- */}
           {block.type === 'restart' && (
             <span className="bg-gray-100 px-2 py-1 rounded text-gray-700">
               Trade again
