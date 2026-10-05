@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo } from '../lib/storage';
+import QuickStrategyModal from '../components/QuickStrategyModal';
 
 /* ---------- Option lists ---------- */
 const MARKETS = [
@@ -100,6 +101,7 @@ export default function BotBuilder() {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [savedFlash, setSavedFlash] = useState(false);
   const firstRun = useRef(true);
+  const [showQuickStrategy, setShowQuickStrategy] = useState(false);
 
   /* Run state */
   const [isRunning, setIsRunning] = useState(false);
@@ -110,7 +112,7 @@ export default function BotBuilder() {
   const [stake, setStake] = useState(0);
   const [payout, setPayout] = useState(0);
 
-  /* ----- AUTO-SAVE on any block change ----- */
+  /* ----- AUTO-SAVE ----- */
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
@@ -160,6 +162,32 @@ export default function BotBuilder() {
     }
     setBlocks(saved.blocks as Block[]);
     setLastSavedAt(saved.savedAt);
+  };
+
+  /* ---- apply quick-strategy preset ---- */
+  const applyPreset = (presetId: string) => {
+    const trade = createBlock('trade_params');
+    const purchase = createBlock('purchase');
+    const sell = createBlock('sell');
+    const restart = createBlock('restart');
+
+    switch (presetId) {
+      case 'rise_fall':
+        // default setup
+        break;
+      case 'even_odd':
+        trade.tradeType = 'Digits › Even/Odd';
+        trade.contractType = 'Both';
+        break;
+      case 'over_under':
+        trade.tradeType = 'Digits › Over/Under';
+        break;
+      case 'matches_differs':
+        trade.tradeType = 'Digits › Matches/Differs';
+        break;
+    }
+
+    setBlocks([trade, purchase, sell, restart]);
   };
 
   const handleReset = () => {
@@ -214,7 +242,10 @@ export default function BotBuilder() {
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
       {/* ===== LEFT SIDEBAR ===== */}
       <aside className="w-64 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <button className="m-3 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm">
+        <button
+          onClick={() => setShowQuickStrategy(true)}
+          className="m-3 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm"
+        >
           Quick strategy
         </button>
 
@@ -428,6 +459,13 @@ export default function BotBuilder() {
           </button>
         </div>
       </aside>
+
+      {/* ===== QUICK STRATEGY MODAL ===== */}
+      <QuickStrategyModal
+        open={showQuickStrategy}
+        onClose={() => setShowQuickStrategy(false)}
+        onSelect={applyPreset}
+      />
     </div>
   );
 }
