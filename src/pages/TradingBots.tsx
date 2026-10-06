@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import BotCard from '../components/BotCard';
 import SpeedBot from './tools/SpeedBot';
 import Diffbot from './tools/Diffbot';
+import Hyperbot from './tools/Hyperbot';
 
 type Bot = {
   id: string;
@@ -212,6 +213,8 @@ export default function TradingBots() {
           <SpeedBot />
         ) : activeSubTab === 'diffbot' ? (
           <Diffbot />
+        ) : activeSubTab === 'hyperbot' ? (
+          <Hyperbot />
         ) : (
           <div className="text-center text-gray-400 text-sm py-20">
             <span className="font-semibold text-gray-500">
