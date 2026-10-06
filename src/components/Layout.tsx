@@ -9,12 +9,12 @@ const navItems = [
   { label: 'Charts', to: '/charts' },
   { label: 'Reports', to: '/reports' },
   { label: 'Manual Trader', to: '/manual_trader' },
+  { label: 'Copy Trading', to: '/copy_trading' },
 ];
 
 export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* TOP NAV */}
       <header className="bg-navy text-white">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-6 h-14">
           <div className="flex items-center gap-8">
@@ -51,7 +51,6 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* PAGE CONTENT */}
       <Outlet />
     </div>
   );

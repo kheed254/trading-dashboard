@@ -8,6 +8,7 @@ import AnalysisTool from './pages/AnalysisTool';
 import Charts from './pages/Charts';
 import Reports from './pages/Reports';
 import ManualTrader from './pages/ManualTrader';
+import CopyTrading from './pages/CopyTrading';
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/charts" element={<Charts />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/manual_trader" element={<ManualTrader />} />
+          <Route path="/copy_trading" element={<CopyTrading />} />
         </Route>
       </Routes>
     </BrowserRouter>
