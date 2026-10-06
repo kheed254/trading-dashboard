@@ -5,6 +5,7 @@ import SpeedBot from './tools/SpeedBot';
 import Diffbot from './tools/Diffbot';
 import Hyperbot from './tools/Hyperbot';
 import MartingaleCalculator from './tools/MartingaleCalculator';
+import Matches from './tools/Matches';
 
 type Bot = {
   id: string;
@@ -216,6 +217,8 @@ export default function TradingBots() {
           <Diffbot />
         ) : activeSubTab === 'hyperbot' ? (
           <Hyperbot />
+        ) : activeSubTab === 'matches' ? (
+          <Matches />
         ) : (
           <div className="text-center text-gray-400 text-sm py-20">
             <span className="font-semibold text-gray-500">
