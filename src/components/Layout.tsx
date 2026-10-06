@@ -59,7 +59,7 @@ const IconCopyTrading = () => (
 
 /* ---------- Nav items with icons ---------- */
 const navItems = [
-  { label: 'Dashboard', to: '/', Icon: IconDashboard },
+  { label: 'Dashboard', to: '/dashboard', Icon: IconDashboard },
   { label: 'Bot Builder', to: '/bot_builder', Icon: IconBotBuilder },
   { label: 'Trading Bots', to: '/trading_bots', Icon: IconTradingBots },
   { label: 'Bulk Trader', to: '/bulk_trader', Icon: IconBulkTrader },
@@ -94,7 +94,6 @@ export default function Layout() {
                 <NavLink
                   key={item.to}
                   to={item.to}
-                  end={item.to === '/'}
                   className={({ isActive }) =>
                     `px-2.5 py-4 transition whitespace-nowrap flex items-center gap-1.5 ${
                       isActive
@@ -160,10 +159,7 @@ export default function Layout() {
         {mobileOpen && (
           <nav className="xl:hidden border-t border-white/10 bg-navy max-h-[80vh] overflow-y-auto">
             {navItems.map((item) => {
-              const isActive =
-                item.to === '/'
-                  ? location.pathname === '/'
-                  : location.pathname.startsWith(item.to);
+              const isActive = location.pathname.startsWith(item.to);
               return (
                 <NavLink
                   key={item.to}
