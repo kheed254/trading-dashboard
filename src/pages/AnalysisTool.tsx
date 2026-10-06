@@ -1,13 +1,25 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useDigitStream } from '../lib/deriv';
+import {
+  computeDigitStats,
+  computeEvenOdd,
+  computeOverUnder,
+  computeMatchDiff,
+  mostFrequent,
+  leastFrequent,
+} from '../lib/digitStats';
 
-const MARKETS = [
-  'Volatility 10 (1s) Index',
-  'Volatility 25 (1s) Index',
-  'Volatility 30 (1s) Index',
-  'Volatility 50 (1s) Index',
-  'Volatility 75 (1s) Index',
-  'Volatility 100 (1s) Index',
-];
+/* ---------- Config ---------- */
+const MARKET_MAP: Record<string, string> = {
+  'Volatility 10 (1s) Index': '1HZ10V',
+  'Volatility 25 (1s) Index': '1HZ25V',
+  'Volatility 30 (1s) Index': '1HZ30V',
+  'Volatility 50 (1s) Index': '1HZ50V',
+  'Volatility 75 (1s) Index': '1HZ75V',
+  'Volatility 100 (1s) Index': '1HZ100V',
+};
+
+const MARKETS = Object.keys(MARKET_MAP);
 
 const SUB_TABS = [
   'Analyzer',
@@ -20,25 +32,41 @@ const SUB_TABS = [
   'Micro AI',
 ];
 
-// Placeholder digit percentages — will be replaced with live data later
-const DIGIT_PCTS = [
-  { digit: 0, pct: 9.6 },
-  { digit: 1, pct: 11.3, current: true },
-  { digit: 2, pct: 9.3 },
-  { digit: 3, pct: 9.2 },
-  { digit: 4, pct: 11.6, most: true },
-  { digit: 5, pct: 10.7 },
-  { digit: 6, pct: 6.9, least: true },
-  { digit: 7, pct: 11.7 },
-  { digit: 8, pct: 8.4 },
-  { digit: 9, pct: 9.9 },
-];
-
 export default function AnalysisTool() {
   const [activeSubTab, setActiveSubTab] = useState('Analysis Tool');
-  const [market, setMarket] = useState('Volatility 10 (1s) Index');
+  const [marketName, setMarketName] = useState('Volatility 10 (1s) Index');
   const [ticksWindow, setTicksWindow] = useState(1000);
   const [overUnder, setOverUnder] = useState(5);
+
+  /* ---- Live stream ---- */
+  const symbol = MARKET_MAP[marketName] as any;
+  const { price, currentDigit, digits, connected } = useDigitStream(
+    symbol,
+    ticksWindow
+  );
+
+  /* ---- Derived stats (recomputed on each tick) ---- */
+  const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
+  const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
+  const overUnderStats = useMemo(
+    () => computeOverUnder(digits, overUnder),
+    [digits, overUnder]
+  );
+  const matchDiff = useMemo(
+    () => computeMatchDiff(digits, currentDigit ?? 0),
+    [digits, currentDigit]
+  );
+
+  const most = digits.length > 0 ? mostFrequent(digitStats) : -1;
+  const least = digits.length > 0 ? leastFrequent(digitStats) : -1;
+
+  /* ---- Recent chips (last 10) ---- */
+  const recentEO = digits.slice(-10);
+  const recentUO = digits
+    .slice(-10)
+    .map((d) =>
+      d < overUnder ? 'U' : d === overUnder ? 'E' : 'O'
+    );
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
@@ -77,14 +105,24 @@ export default function AnalysisTool() {
                 Launch AI
               </button>
             </div>
-            <div className="text-xs text-gray-500">Live ●</div>
+            <div className="text-xs text-gray-500">
+              {connected ? (
+                <>
+                  <span className="text-green-500">●</span> Live
+                </>
+              ) : (
+                <>
+                  <span className="text-red-500">●</span> Offline
+                </>
+              )}
+            </div>
           </div>
 
           {/* Select Market */}
           <Label>Select Market:</Label>
           <select
-            value={market}
-            onChange={(e) => setMarket(e.target.value)}
+            value={marketName}
+            onChange={(e) => setMarketName(e.target.value)}
             className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-gray-50 mb-4 outline-none focus:border-blue-400"
           >
             {MARKETS.map((m) => (
@@ -96,8 +134,12 @@ export default function AnalysisTool() {
 
           {/* Big price + last digit */}
           <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-md px-4 py-4 mb-4">
-            <div className="text-2xl font-bold text-navy">—</div>
-            <div className="text-2xl font-bold text-blue-500">—</div>
+            <div className="text-2xl font-bold text-navy font-mono">
+              {price !== null ? price.toFixed(2) : '—'}
+            </div>
+            <div className="text-2xl font-bold text-blue-500 font-mono">
+              {currentDigit !== null ? currentDigit : '—'}
+            </div>
           </div>
 
           {/* Ticks window */}
@@ -106,8 +148,13 @@ export default function AnalysisTool() {
               <Label>Ticks window:</Label>
               <input
                 type="number"
+                min={50}
+                max={5000}
                 value={ticksWindow}
-                onChange={(e) => setTicksWindow(Number(e.target.value))}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  setTicksWindow(v > 0 ? v : 50);
+                }}
                 className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 outline-none focus:border-blue-400"
               />
             </div>
@@ -117,23 +164,29 @@ export default function AnalysisTool() {
           </div>
 
           <div className="text-xs text-gray-500 mb-3">
-            Last 1000 ticks digit distribution
+            Last {ticksWindow} ticks digit distribution
           </div>
 
           {/* Digit circles */}
           <div className="flex justify-between gap-2 mb-2">
-            {DIGIT_PCTS.map((d) => {
-              const bg = d.most
-                ? 'bg-green-500 text-white'
-                : d.least
-                ? 'bg-red-500 text-white'
-                : d.current
-                ? 'bg-blue-500 text-white'
-                : 'bg-white border border-gray-300 text-gray-700';
+            {digitStats.map((d) => {
+              const isCurrent = d.digit === currentDigit;
+              const isMost = d.digit === most;
+              const isLeast = d.digit === least;
+
+              let cls =
+                'bg-white border border-gray-300 text-gray-700';
+              if (isMost) cls = 'bg-green-500 text-white';
+              else if (isLeast) cls = 'bg-red-500 text-white';
+              if (isCurrent) cls = 'bg-blue-500 text-white';
+
               return (
-                <div key={d.digit} className="flex-1 flex flex-col items-center">
+                <div
+                  key={d.digit}
+                  className="flex-1 flex flex-col items-center"
+                >
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold text-sm ${bg}`}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold text-sm transition-colors ${cls}`}
                   >
                     {d.digit}
                   </div>
@@ -146,7 +199,7 @@ export default function AnalysisTool() {
           </div>
 
           <div className="text-right text-xs text-gray-400 mb-6">
-            1000/1000
+            {digits.length}/{ticksWindow}
           </div>
 
           {/* Even/Odd */}
@@ -154,29 +207,32 @@ export default function AnalysisTool() {
           <div className="grid grid-cols-2 gap-4 mb-2">
             <BarColumn
               label="Even"
-              count={476}
-              pct={47.6}
+              count={evenOdd.even}
+              pct={evenOdd.evenPct}
               color="green"
             />
-            <BarColumn label="Odd" count={524} pct={52.4} color="red" />
+            <BarColumn
+              label="Odd"
+              count={evenOdd.odd}
+              pct={evenOdd.oddPct}
+              color="red"
+            />
           </div>
 
           {/* Recent E/O chips */}
           <div className="flex items-center gap-2 mb-6">
             <span className="text-xs text-gray-500">Recent E/O</span>
             <div className="flex gap-1">
-              {['E', 'E', 'O', 'O', 'E', 'E', 'O', 'O', 'E', 'O'].map(
-                (v, i) => (
-                  <span
-                    key={i}
-                    className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
-                      v === 'E' ? 'bg-green-500' : 'bg-red-500'
-                    }`}
-                  >
-                    {v}
-                  </span>
-                )
-              )}
+              {recentEO.map((d, i) => (
+                <span
+                  key={i}
+                  className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
+                    d % 2 === 0 ? 'bg-green-500' : 'bg-red-500'
+                  }`}
+                >
+                  {d % 2 === 0 ? 'E' : 'O'}
+                </span>
+              ))}
             </div>
             <span className="ml-auto text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded">
               Auto
@@ -202,39 +258,42 @@ export default function AnalysisTool() {
           <div className="grid grid-cols-3 gap-3 mb-2">
             <BarColumn
               label="Under"
-              count={508}
-              pct={50.8}
+              count={overUnderStats.under}
+              pct={overUnderStats.underPct}
               color="green"
             />
             <BarColumn
               label="Equal"
-              count={107}
-              pct={10.7}
+              count={overUnderStats.equal}
+              pct={overUnderStats.equalPct}
               color="gray"
             />
-            <BarColumn label="Over" count={385} pct={38.5} color="red" />
+            <BarColumn
+              label="Over"
+              count={overUnderStats.over}
+              pct={overUnderStats.overPct}
+              color="red"
+            />
           </div>
 
           {/* Recent U/O chips */}
           <div className="flex items-center gap-2 mb-6">
             <span className="text-xs text-gray-500">Recent U/O</span>
             <div className="flex gap-1">
-              {['U', 'U', 'O', 'O', 'E', 'U', 'O', 'E', 'O', 'U'].map(
-                (v, i) => (
-                  <span
-                    key={i}
-                    className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
-                      v === 'U'
-                        ? 'bg-green-500'
-                        : v === 'O'
-                        ? 'bg-red-500'
-                        : 'bg-gray-400'
-                    }`}
-                  >
-                    {v}
-                  </span>
-                )
-              )}
+              {recentUO.map((v, i) => (
+                <span
+                  key={i}
+                  className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center text-white ${
+                    v === 'U'
+                      ? 'bg-green-500'
+                      : v === 'O'
+                      ? 'bg-red-500'
+                      : 'bg-gray-400'
+                  }`}
+                >
+                  {v}
+                </span>
+              ))}
             </div>
             <span className="ml-auto text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded">
               Auto
@@ -246,14 +305,14 @@ export default function AnalysisTool() {
           <div className="grid grid-cols-2 gap-4 mb-2">
             <BarColumn
               label="Matches"
-              count={107}
-              pct={10.7}
+              count={matchDiff.matches}
+              pct={matchDiff.matchPct}
               color="green"
             />
             <BarColumn
               label="Differs"
-              count={893}
-              pct={89.3}
+              count={matchDiff.differs}
+              pct={matchDiff.differPct}
               color="red"
             />
           </div>
@@ -268,6 +327,7 @@ export default function AnalysisTool() {
   );
 }
 
+/* ---------- Small components ---------- */
 function Label({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[11px] uppercase tracking-wider text-gray-500 font-medium mb-1">

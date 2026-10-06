@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { lastDigit } from './digitStats';
 
 /* ---------- Config ---------- */
 export const DERIV_WS_URL =
@@ -150,4 +151,77 @@ export function useMultiTicks(symbols: SymbolCode[]) {
   }, [symbolsKey]);
 
   return { ticks, connected, error };
+}
+
+/* ---------- Hook: useDigitStream ---------- */
+/**
+ * Subscribes to live ticks for a single symbol and keeps a rolling
+ * window of the last N last-digits. Also tracks current price and
+ * current last digit.
+ */
+export function useDigitStream(
+  symbol: SymbolCode,
+  windowSize: number = 1000
+) {
+  const [price, setPrice] = useState<number | null>(null);
+  const [currentDigit, setCurrentDigit] = useState<number | null>(null);
+  const [digits, setDigits] = useState<number[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const windowRef = useRef<number>(windowSize);
+  windowRef.current = windowSize;
+
+  useEffect(() => {
+    setError(null);
+    setConnected(false);
+    setPrice(null);
+    setCurrentDigit(null);
+    setDigits([]);
+
+    const ws = new WebSocket(DERIV_WS_URL);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnected(true);
+      ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.msg_type === 'tick' && data.tick) {
+          const p = Number(data.tick.quote);
+          const d = lastDigit(p);
+          setPrice(p);
+          setCurrentDigit(d);
+          setDigits((prev) => {
+            const next = [...prev, d];
+            const cap = windowRef.current;
+            return next.length > cap ? next.slice(-cap) : next;
+          });
+        }
+        if (data.error) setError(data.error.message || 'Unknown error');
+      } catch {
+        /* ignore */
+      }
+    };
+
+    ws.onerror = () => setError('WebSocket error');
+    ws.onclose = () => setConnected(false);
+
+    return () => {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ forget_all: 'ticks' }));
+        }
+      } catch {
+        /* ignore */
+      }
+      ws.close();
+    };
+  }, [symbol]);
+
+  return { price, currentDigit, digits, connected, error };
 }
