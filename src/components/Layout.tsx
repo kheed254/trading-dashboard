@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { startDerivLogin } from '../lib/auth';
 
 /* ---------- Inline SVG icons ---------- */
 const IconDashboard = () => (
@@ -87,7 +88,7 @@ export default function Layout() {
               Deriv<span className="text-brand-teal">Analyser</span>
             </NavLink>
 
-            {/* Desktop nav — 2xl and up shows all, lg shows most */}
+            {/* Desktop nav */}
             <nav className="hidden xl:flex items-center gap-0.5 text-[13px]">
               {navItems.map((item) => (
                 <NavLink
@@ -111,10 +112,16 @@ export default function Layout() {
 
           {/* Right: auth buttons + mobile hamburger */}
           <div className="flex items-center gap-2 shrink-0">
-            <button className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap">
+            <button
+              onClick={startDerivLogin}
+              className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
+            >
               Log in
             </button>
-            <button className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 bg-brand-pink text-navy rounded-full font-semibold hover:opacity-90 whitespace-nowrap">
+            <button
+              onClick={startDerivLogin}
+              className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 bg-brand-pink text-navy rounded-full font-semibold hover:opacity-90 whitespace-nowrap"
+            >
               Sign up
             </button>
 
@@ -175,10 +182,16 @@ export default function Layout() {
             })}
             {/* Auth buttons inside drawer for mobile */}
             <div className="flex gap-2 p-4 sm:hidden">
-              <button className="flex-1 text-sm px-3 py-2 border border-white/40 rounded-full hover:bg-white/10">
+              <button
+                onClick={startDerivLogin}
+                className="flex-1 text-sm px-3 py-2 border border-white/40 rounded-full hover:bg-white/10"
+              >
                 Log in
               </button>
-              <button className="flex-1 text-sm px-3 py-2 bg-brand-pink text-navy rounded-full font-semibold">
+              <button
+                onClick={startDerivLogin}
+                className="flex-1 text-sm px-3 py-2 bg-brand-pink text-navy rounded-full font-semibold"
+              >
                 Sign up
               </button>
             </div>
