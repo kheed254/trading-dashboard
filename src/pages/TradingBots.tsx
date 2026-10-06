@@ -4,6 +4,7 @@ import BotCard from '../components/BotCard';
 import SpeedBot from './tools/SpeedBot';
 import Diffbot from './tools/Diffbot';
 import Hyperbot from './tools/Hyperbot';
+import MartingaleCalculator from './tools/MartingaleCalculator';
 
 type Bot = {
   id: string;
@@ -224,6 +225,8 @@ export default function TradingBots() {
             Coming soon.
           </div>
         )
+      ) : activeTab === 'calculator' ? (
+        <MartingaleCalculator />
       ) : filtered.length === 0 ? (
         <div className="text-center text-gray-400 text-sm py-20">
           No bots in this category yet.
