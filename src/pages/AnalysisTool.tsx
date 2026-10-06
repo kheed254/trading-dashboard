@@ -45,7 +45,7 @@ export default function AnalysisTool() {
     ticksWindow
   );
 
-  /* ---- Derived stats (recomputed on each tick) ---- */
+  /* ---- Derived stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
   const overUnderStats = useMemo(
@@ -64,9 +64,7 @@ export default function AnalysisTool() {
   const recentEO = digits.slice(-10);
   const recentUO = digits
     .slice(-10)
-    .map((d) =>
-      d < overUnder ? 'U' : d === overUnder ? 'E' : 'O'
-    );
+    .map((d) => (d < overUnder ? 'U' : d === overUnder ? 'E' : 'O'));
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
@@ -167,35 +165,36 @@ export default function AnalysisTool() {
             Last {ticksWindow} ticks digit distribution
           </div>
 
-          {/* Digit circles */}
-          <div className="flex justify-between gap-2 mb-2">
-            {digitStats.map((d) => {
-              const isCurrent = d.digit === currentDigit;
-              const isMost = d.digit === most;
-              const isLeast = d.digit === least;
+          {/* Digit circles — scrollable on mobile */}
+          <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+            <div className="flex justify-between gap-2 min-w-[640px] mb-2">
+              {digitStats.map((d) => {
+                const isCurrent = d.digit === currentDigit;
+                const isMost = d.digit === most;
+                const isLeast = d.digit === least;
 
-              let cls =
-                'bg-white border border-gray-300 text-gray-700';
-              if (isMost) cls = 'bg-green-500 text-white';
-              else if (isLeast) cls = 'bg-red-500 text-white';
-              if (isCurrent) cls = 'bg-blue-500 text-white';
+                let cls = 'bg-white border border-gray-300 text-gray-700';
+                if (isMost) cls = 'bg-green-500 text-white';
+                else if (isLeast) cls = 'bg-red-500 text-white';
+                if (isCurrent) cls = 'bg-blue-500 text-white';
 
-              return (
-                <div
-                  key={d.digit}
-                  className="flex-1 flex flex-col items-center"
-                >
+                return (
                   <div
-                    className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold text-sm transition-colors ${cls}`}
+                    key={d.digit}
+                    className="flex-1 flex flex-col items-center"
                   >
-                    {d.digit}
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center font-semibold text-sm transition-colors ${cls}`}
+                    >
+                      {d.digit}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {d.pct.toFixed(1)}%
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {d.pct.toFixed(1)}%
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
           <div className="text-right text-xs text-gray-400 mb-6">
@@ -204,7 +203,7 @@ export default function AnalysisTool() {
 
           {/* Even/Odd */}
           <SectionLabel>Even/Odd</SectionLabel>
-          <div className="grid grid-cols-2 gap-4 mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             <BarColumn
               label="Even"
               count={evenOdd.even}
@@ -220,9 +219,9 @@ export default function AnalysisTool() {
           </div>
 
           {/* Recent E/O chips */}
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-xs text-gray-500">Recent E/O</span>
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               {recentEO.map((d, i) => (
                 <span
                   key={i}
@@ -255,7 +254,7 @@ export default function AnalysisTool() {
             </select>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
             <BarColumn
               label="Under"
               count={overUnderStats.under}
@@ -277,9 +276,9 @@ export default function AnalysisTool() {
           </div>
 
           {/* Recent U/O chips */}
-          <div className="flex items-center gap-2 mb-6">
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-xs text-gray-500">Recent U/O</span>
-            <div className="flex gap-1">
+            <div className="flex gap-1 flex-wrap">
               {recentUO.map((v, i) => (
                 <span
                   key={i}
@@ -302,7 +301,7 @@ export default function AnalysisTool() {
 
           {/* Matches/Differs */}
           <SectionLabel>Matches/Differs</SectionLabel>
-          <div className="grid grid-cols-2 gap-4 mb-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             <BarColumn
               label="Matches"
               count={matchDiff.matches}

@@ -107,25 +107,30 @@ export default function BulkTrader() {
       </div>
 
       {/* DIGIT CIRCLES 0-9 */}
-      <div className="flex justify-between gap-2 mb-8">
-        {digitStats.map((d) => {
-          const isCurrent = d.digit === currentDigit;
-          const cls = isCurrent
-            ? 'bg-blue-500 text-white'
-            : 'bg-gray-100 border border-gray-200 text-navy';
-          return (
-            <div key={d.digit} className="flex-1 flex flex-col items-center">
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-8">
+        <div className="flex justify-between gap-2 min-w-[640px]">
+          {digitStats.map((d) => {
+            const isCurrent = d.digit === currentDigit;
+            const cls = isCurrent
+              ? 'bg-blue-500 text-white'
+              : 'bg-gray-100 border border-gray-200 text-navy';
+            return (
               <div
-                className={`w-14 h-14 rounded-full flex items-center justify-center font-semibold transition-colors ${cls}`}
+                key={d.digit}
+                className="flex-1 flex flex-col items-center"
               >
-                {d.digit}
+                <div
+                  className={`w-14 h-14 rounded-full flex items-center justify-center font-semibold transition-colors ${cls}`}
+                >
+                  {d.digit}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {d.pct.toFixed(1)}%
+                </div>
               </div>
-              <div className="text-xs text-gray-500 mt-1">
-                {d.pct.toFixed(1)}%
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       <div className="text-right text-xs text-gray-400 mb-6">
@@ -133,7 +138,7 @@ export default function BulkTrader() {
       </div>
 
       {/* TICKS / STAKE / NO OF TRADES */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div>
           <Label center>Ticks</Label>
           <input
@@ -165,7 +170,7 @@ export default function BulkTrader() {
       </div>
 
       {/* EVEN / ODD BARS */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <div className="bg-teal-500 text-white rounded-md px-4 py-3">
           <div className="font-semibold text-center">Even</div>
           <div className="text-center text-sm mt-1">
