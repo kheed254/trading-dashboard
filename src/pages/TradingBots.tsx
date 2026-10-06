@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import BotCard from '../components/BotCard';
+import SpeedBot from './tools/SpeedBot';
 
 type Bot = {
   id: string;
@@ -93,36 +94,84 @@ const BOTS: Bot[] = [
       'Pro Apex: automated trading with risk management and profit optimization.',
     category: 'premium',
   },
+  {
+    id: 'free_rise_fall',
+    name: 'Simple Rise/Fall',
+    premium: false,
+    stars: 4,
+    description:
+      'Free bot that trades Rise/Fall on Volatility 100 (1s) with a basic martingale.',
+    category: 'free',
+  },
+  {
+    id: 'free_even_odd',
+    name: 'Even/Odd Auto',
+    premium: false,
+    stars: 4,
+    description:
+      'Free bot that trades the last digit Even/Odd on Volatility 75 (1s).',
+    category: 'free',
+  },
+  {
+    id: 'free_over_under',
+    name: 'Over/Under 4',
+    premium: false,
+    stars: 5,
+    description:
+      'Free bot trading Digits Over 4 / Under 5 on Volatility 25 (1s).',
+    category: 'free',
+  },
+  {
+    id: 'free_speedbot_1',
+    name: 'SpeedBot Basic',
+    premium: false,
+    stars: 3,
+    description:
+      'Minimal speed bot for fast Rise/Fall entries with tight stop-loss.',
+    category: 'free',
+  },
 ];
 
-const TABS: { id: Bot['category'] | 'all'; label: string }[] = [
+type TopTab = 'free' | 'speed' | 'calculator' | 'strategies' | 'all';
+
+const TOP_TABS: { id: TopTab; label: string }[] = [
   { id: 'free', label: 'Free Bots' },
-  { id: 'speed', label: 'SpeedBots' },
+  { id: 'speed', label: 'SpeedBots 🚀' },
   { id: 'calculator', label: 'Calculator' },
   { id: 'strategies', label: 'Strategies' },
   { id: 'all', label: 'All' },
 ];
 
+type SpeedSubTab = 'matches' | 'diffbot' | 'hyperbot' | 'speedbot';
+
+const SPEED_SUB_TABS: { id: SpeedSubTab; label: string }[] = [
+  { id: 'matches', label: 'Matches' },
+  { id: 'diffbot', label: 'Diffbot' },
+  { id: 'hyperbot', label: 'Hyperbot' },
+  { id: 'speedbot', label: 'SpeedBot 🚀' },
+];
+
 export default function TradingBots() {
-  const [activeTab, setActiveTab] = useState<typeof TABS[number]['id']>('all');
+  const [activeTab, setActiveTab] = useState<TopTab>('all');
+  const [activeSubTab, setActiveSubTab] = useState<SpeedSubTab>('speedbot');
   const navigate = useNavigate();
 
   const filtered =
     activeTab === 'all'
       ? BOTS
+      : activeTab === 'speed'
+      ? []
       : BOTS.filter((b) => b.category === activeTab);
 
   const handleLoad = (_bot: Bot) => {
-    // For now, just navigate to Bot Builder.
-    // Later we can encode the bot's settings in the URL or localStorage.
     navigate('/bot_builder');
   };
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-8">
-      {/* Category tabs */}
-      <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200 pb-2">
-        {TABS.map((t) => (
+    <main className="max-w-7xl mx-auto px-6 py-6">
+      {/* Top tabs */}
+      <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-200 pb-2">
+        {TOP_TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
@@ -137,8 +186,39 @@ export default function TradingBots() {
         ))}
       </div>
 
-      {/* Grid */}
-      {filtered.length === 0 ? (
+      {/* SpeedBots sub-tabs */}
+      {activeTab === 'speed' && (
+        <div className="flex flex-wrap gap-2 mb-6">
+          {SPEED_SUB_TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveSubTab(t.id)}
+              className={`px-3 py-1.5 text-xs rounded-md transition border ${
+                activeSubTab === t.id
+                  ? 'bg-blue-50 text-blue-600 font-semibold border-blue-400'
+                  : 'text-gray-600 hover:bg-gray-100 border-gray-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* CONTENT */}
+      {activeTab === 'speed' ? (
+        activeSubTab === 'speedbot' ? (
+          <SpeedBot />
+        ) : (
+          <div className="text-center text-gray-400 text-sm py-20">
+            <span className="font-semibold text-gray-500">
+              {SPEED_SUB_TABS.find((t) => t.id === activeSubTab)?.label}
+            </span>
+            <br />
+            Coming soon.
+          </div>
+        )
+      ) : filtered.length === 0 ? (
         <div className="text-center text-gray-400 text-sm py-20">
           No bots in this category yet.
         </div>
