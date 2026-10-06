@@ -8,6 +8,7 @@ const navItems = [
   { label: 'Analysis Tool', to: '/analysis_tool' },
   { label: 'Charts', to: '/charts' },
   { label: 'Reports', to: '/reports' },
+  { label: 'Manual Trader', to: '/manual_trader' },
 ];
 
 export default function Layout() {
