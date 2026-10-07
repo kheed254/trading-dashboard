@@ -1,44 +1,44 @@
-/* ---------- Deriv OAuth with PKCE ---------- */
+/* ---------- Deriv OAuth — stingerfx.site ---------- */
 
+/** Your own OAuth client ID, registered for stingerfx.site. */
 export const DERIV_APP_ID = '33zV8oLiXd2lfpHkcvdWt';
-export const DERIV_OAUTH_URL = 'https://auth.deriv.com/oauth2/auth';
-export const DERIV_TOKEN_URL = 'https://auth.deriv.com/oauth2/token';
 
+/** New OAuth endpoint — always shows the consent screen. */
+export const DERIV_OAUTH_URL = 'https://auth.deriv.com/oauth2/auth';
+
+/** Where Deriv sends the user back after they authorize. */
 export function getRedirectUri(): string {
-  return window.location.origin + '/';
+  return window.location.origin + window.location.pathname;
 }
 
 /* ---------- PKCE helpers ---------- */
 
-function base64UrlEncode(buffer: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+function randomString(len: number): string {
+  const charset =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  const arr = crypto.getRandomValues(new Uint8Array(len));
+  return Array.from(arr)
+    .map((v) => charset[v % charset.length])
+    .join('');
+}
+
+async function deriveChallenge(verifier: string): Promise<string> {
+  const hash = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(verifier)
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');
-}
-
-async function sha256(plain: string): Promise<ArrayBuffer> {
-  const encoder = new TextEncoder();
-  return await crypto.subtle.digest('SHA-256', encoder.encode(plain));
-}
-
-function randomString(length: number): string {
-  const array = crypto.getRandomValues(new Uint8Array(length));
-  return Array.from(array)
-    .map((v) =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[
-        v % 66
-      ]
-    )
-    .join('');
 }
 
 /* ---------- Start login ---------- */
 
 export async function startDerivLogin() {
   const codeVerifier = randomString(64);
-  const codeChallenge = base64UrlEncode(await sha256(codeVerifier));
-  const state = randomString(16);
+  const state = randomString(32);
+  const codeChallenge = await deriveChallenge(codeVerifier);
 
   sessionStorage.setItem('pkce_code_verifier', codeVerifier);
   sessionStorage.setItem('oauth_state', state);
@@ -47,23 +47,24 @@ export async function startDerivLogin() {
     response_type: 'code',
     client_id: DERIV_APP_ID,
     redirect_uri: getRedirectUri(),
-    scope: 'trade',
+    scope: 'trade account_manage',
     state,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   });
 
-  window.location.href = `${DERIV_OAUTH_URL}?${params.toString()}`;
+  window.location.href = `${DERIV_OAUTH_URL}?${params}`;
 }
 
-/* ---------- Read auth response ---------- */
+/* ---------- Read auth response from URL after redirect ---------- */
 
 export function readDerivAuthResponse() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const state = params.get('state');
-  if (!code) return null;
-  return { code, state };
+  const p = new URLSearchParams(window.location.search);
+  return {
+    code: p.get('code'),
+    state: p.get('state'),
+    error: p.get('error'),
+  };
 }
 
 export function stripAuthParamsFromUrl() {
