@@ -1,6 +1,6 @@
 /* ---------- Deriv OAuth ---------- */
 
-export const DERIV_APP_ID = '1089';
+export const DERIV_APP_ID = '33zV8oLiXd2lfpHkcvdWt';
 export const DERIV_OAUTH_URL = 'https://oauth.deriv.com/oauth2/authorize';
 
 export function getRedirectUri(): string {
