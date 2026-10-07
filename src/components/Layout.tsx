@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { startDerivLogin } from '../lib/auth';
+import { useTicks } from '../lib/deriv';
 
 /* ---------- Inline SVG icons ---------- */
 const IconDashboard = () => (
@@ -74,6 +75,9 @@ export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
 
+  /* Live V100 ticker */
+  const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* ============ TOP NAV ============ */}
@@ -109,8 +113,24 @@ export default function Layout() {
             </nav>
           </div>
 
-          {/* Right: auth buttons + mobile hamburger */}
+          {/* Right: live ticker + auth buttons + mobile hamburger */}
           <div className="flex items-center gap-2 shrink-0">
+            {/* Live price ticker */}
+            <div
+              className="hidden md:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
+              title="Volatility 100 (1s) Index — live"
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  liveConnected ? 'bg-green-400 animate-pulse' : 'bg-red-400'
+                }`}
+              />
+              <span className="text-white/70 font-medium">V100</span>
+              <span className="text-white font-mono font-semibold tabular-nums">
+                {livePrice !== null ? livePrice.toFixed(2) : '—'}
+              </span>
+            </div>
+
             <button
               onClick={startDerivLogin}
               className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
