@@ -138,7 +138,7 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Live V100 ticker */}
+            {/* Live V100 ticker — stays on the dark glass pill */}
             <div
               className="hidden md:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
               title="Volatility 100 (1s) Index — live"
@@ -156,19 +156,25 @@ export default function Layout() {
 
             {authorized && user ? (
               <div className="relative">
-                {/* ============ PILL ============ */}
+                {/* ============ PILL — LIGHT, MATCHING DERIVANALYSER ============ */}
                 <button
                   onClick={() => setAccountOpen((o) => !o)}
-                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-full text-xs sm:text-sm transition"
+                  className="flex items-center gap-2.5 bg-white hover:bg-gray-50 px-2 py-1 rounded-full text-sm transition shadow-sm border border-gray-100"
                 >
-                  {/* Flag image — same as DerivAnalyser */}
-                  <span className="text-base leading-none">🇺🇸</span>
-                  <span className="font-mono font-semibold tabular-nums">
+                  {/* Circular US flag */}
+                  <span className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
+                    <img
+                      src="https://flagcdn.com/w80/us.png"
+                      alt="USD"
+                      className="w-full h-full object-cover"
+                    />
+                  </span>
+                  <span className="font-mono font-bold text-brand-teal tabular-nums">
                     {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
                   <svg
                     viewBox="0 0 24 24"
-                    className={`w-3.5 h-3.5 transition-transform ${
+                    className={`w-4 h-4 text-navy transition-transform ${
                       accountOpen ? 'rotate-180' : ''
                     }`}
                     fill="currentColor"
@@ -208,7 +214,9 @@ export default function Layout() {
                           onClick={() => setAccountsExpanded((x) => !x)}
                           className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
                         >
-                          <span>Deriv accounts</span>
+                          <span>
+                            Deriv account{tab === 'demo' ? '' : 's'}
+                          </span>
                           <svg
                             viewBox="0 0 24 24"
                             className={`w-4 h-4 transition-transform ${
@@ -232,9 +240,12 @@ export default function Layout() {
                                 }`}
                               >
                                 <div className="flex items-center gap-2.5">
-                                  {/* US flag emoji — matches DerivAnalyser */}
-                                  <span className="text-xl leading-none">
-                                    🇺🇸
+                                  <span className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
+                                    <img
+                                      src="https://flagcdn.com/w80/us.png"
+                                      alt="USD"
+                                      className="w-full h-full object-cover"
+                                    />
                                   </span>
                                   <div>
                                     <div className="text-sm font-semibold text-navy">
@@ -360,10 +371,19 @@ export default function Layout() {
 
             {authorized && user ? (
               <div className="p-4 flex items-center justify-between">
-                <div>
-                  <div className="text-xs text-white/60">Balance</div>
-                  <div className="text-sm font-mono font-semibold">
-                    {fmtMoney(user.balance)} {user.currency}
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full overflow-hidden border border-white/30">
+                    <img
+                      src="https://flagcdn.com/w80/us.png"
+                      alt="USD"
+                      className="w-full h-full object-cover"
+                    />
+                  </span>
+                  <div>
+                    <div className="text-xs text-white/60">Balance</div>
+                    <div className="text-sm font-mono font-semibold">
+                      {fmtMoney(user.balance)} {user.currency}
+                    </div>
                   </div>
                 </div>
                 <button
