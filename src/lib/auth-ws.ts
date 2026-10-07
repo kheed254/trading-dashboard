@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 
 /* ---------- Config ---------- */
 const DERIV_APP_ID = '33zV8oLiXd2lfpHkcvdWt';
-const WS_URL = `wss://ws.derivws.com/websockets/v3?app_id=${DERIV_APP_ID}`;
+
+/** Public market WebSocket — same endpoint the tickers use, works reliably. */
+const WS_URL = `wss://api.derivws.com/trading/v1/options/ws/public?app_id=${DERIV_APP_ID}`;
 
 /* ---------- Types ---------- */
 export type DerivUser = {
@@ -16,13 +18,9 @@ export type DerivUser = {
 };
 
 export type AuthWsState = {
-  /** True once Deriv has accepted the token. */
   authorized: boolean;
-  /** Populated after successful authorize. */
   user: DerivUser | null;
-  /** Error string if authorization failed. */
   error: string | null;
-  /** Send a raw JSON message on the authorized socket. */
   send: (msg: Record<string, any>) => void;
 };
 
@@ -36,7 +34,7 @@ export function useAuthWs(): AuthWsState {
   const authorizedRef = useRef(false);
 
   useEffect(() => {
-    /* Look for the token we saved during the OAuth flow */
+    /* Grab the token from sessionStorage (set during OAuth flow) */
     let token: string | null = null;
     try {
       token = sessionStorage.getItem('sfx_access_token');
@@ -45,7 +43,7 @@ export function useAuthWs(): AuthWsState {
     }
 
     if (!token) {
-      // No token — nothing to do. User isn't logged in.
+      // No token — user isn't logged in. Nothing to do.
       return;
     }
 
@@ -90,10 +88,9 @@ export function useAuthWs(): AuthWsState {
         setAuthorized(true);
         authorizedRef.current = true;
 
-        /* Console log so we can verify without changing the UI yet */
         console.log('[StingerFX] Authorized:', u);
 
-        /* Subscribe to live balance updates on this same socket */
+        /* Subscribe to live balance updates on the same socket */
         ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
       }
 
@@ -107,12 +104,16 @@ export function useAuthWs(): AuthWsState {
             balance: Number(b.balance ?? prev.balance),
             currency: b.currency || prev.currency,
           };
-          console.log('[StingerFX] Balance update:', updated.balance, updated.currency);
+          console.log(
+            '[StingerFX] Balance update:',
+            updated.balance,
+            updated.currency
+          );
           return updated;
         });
       }
 
-      /* --- Errors anywhere --- */
+      /* --- Errors anywhere else --- */
       if (data.error && data.msg_type !== 'authorize') {
         console.warn('[StingerFX] API error:', data.error);
       }
