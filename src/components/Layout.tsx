@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { startDerivLogin } from '../lib/auth';
+import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
+import { useAuthWs } from '../lib/auth-ws';
 
 /* ---------- Inline SVG icons ---------- */
 const IconDashboard = () => (
@@ -9,56 +10,47 @@ const IconDashboard = () => (
     <path d="M3 3h8v8H3V3zm10 0h8v5h-8V3zM3 13h8v8H3v-8zm10 3h8v5h-8v-5z" />
   </svg>
 );
-
 const IconBotBuilder = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M12 2l3 3h-2v3h2V6l3 3-3 3v-2h-2v3h2l-3 3-3-3h2v-3H9v2l-3-3 3-3v2h2V5H9l3-3z" />
   </svg>
 );
-
 const IconTradingBots = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M5 3h14v4H5V3zm0 7h14v4H5v-4zm0 7h14v4H5v-4z" />
   </svg>
 );
-
 const IconBulkTrader = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M4 18l5-6 4 4 7-9v4l-7 9-4-4-5 6z" />
   </svg>
 );
-
 const IconAnalysis = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M4 20V10h3v10H4zm6 0V4h3v16h-3zm6 0v-8h3v8h-3z" />
   </svg>
 );
-
 const IconCharts = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M3 17l6-6 4 4 8-9v5l-8 9-4-4-6 6z" />
   </svg>
 );
-
 const IconReports = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M6 2h9l5 5v15H6V2zm8 1v5h5" />
   </svg>
 );
-
 const IconManualTrader = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M4 6h16v3H4V6zm0 5h10v3H4v-3zm0 5h16v3H4v-3z" />
   </svg>
 );
-
 const IconCopyTrading = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M8 8h11v11H8V8zm-3 3V4h11v3H8v4H5z" />
   </svg>
 );
 
-/* ---------- Nav items with icons ---------- */
 const navItems = [
   { label: 'Dashboard', to: '/dashboard', Icon: IconDashboard },
   { label: 'Bot Builder', to: '/bot_builder', Icon: IconBotBuilder },
@@ -73,14 +65,19 @@ const navItems = [
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const location = useLocation();
 
-  /* Live V100 ticker */
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
+  const { authorized, user, switchAccount } = useAuthWs();
+
+  const handleLogout = () => {
+    clearAccessToken();
+    window.location.href = '/';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ============ TOP NAV ============ */}
       <header className="bg-navy text-white sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           {/* Left: logo + desktop tabs */}
@@ -92,7 +89,6 @@ export default function Layout() {
               Stinger<span className="text-brand-teal">FX</span>
             </NavLink>
 
-            {/* Desktop nav */}
             <nav className="hidden xl:flex items-center gap-0.5 text-[13px]">
               {navItems.map((item) => (
                 <NavLink
@@ -113,9 +109,9 @@ export default function Layout() {
             </nav>
           </div>
 
-          {/* Right: live ticker + auth buttons + mobile hamburger */}
+          {/* Right: ticker + auth */}
           <div className="flex items-center gap-2 shrink-0">
-            {/* Live price ticker */}
+            {/* Live V100 ticker */}
             <div
               className="hidden md:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
               title="Volatility 100 (1s) Index — live"
@@ -131,18 +127,127 @@ export default function Layout() {
               </span>
             </div>
 
-            <button
-              onClick={startDerivLogin}
-              className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
-            >
-              Log in
-            </button>
-            <button
-              onClick={startDerivLogin}
-              className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 bg-brand-pink text-navy rounded-full font-semibold hover:opacity-90 whitespace-nowrap"
-            >
-              Sign up
-            </button>
+            {authorized && user ? (
+              /* ============ LOGGED-IN STATE ============ */
+              <div className="relative">
+                <button
+                  onClick={() => setAccountOpen((o) => !o)}
+                  className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-full text-xs sm:text-sm transition"
+                >
+                  <span className="text-base">🇺🇸</span>
+                  <span className="font-mono font-semibold tabular-nums">
+                    {user.balance.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    {user.currency}
+                  </span>
+                  <span className="text-white/70">
+                    {accountOpen ? '▲' : '▼'}
+                  </span>
+                </button>
+
+                {accountOpen && (
+                  <>
+                    {/* click-outside overlay */}
+                    <div
+                      className="fixed inset-0 z-[999]"
+                      onClick={() => setAccountOpen(false)}
+                    />
+                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl min-w-[280px] z-[1000] overflow-hidden">
+                      {/* Real / Demo switcher */}
+                      <div className="flex border-b border-gray-200">
+                        {(['real', 'demo'] as const).map((t) => {
+                          const active =
+                            (t === 'demo') === user.isVirtual;
+                          return (
+                            <button
+                              key={t}
+                              className={`flex-1 py-3 text-sm font-medium ${
+                                active
+                                  ? 'border-b-2 border-red-500 text-navy font-semibold'
+                                  : 'text-gray-500 hover:bg-gray-50'
+                              }`}
+                            >
+                              {t === 'real' ? 'Real' : 'Demo'}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Account list */}
+                      <div className="p-3">
+                        <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
+                          Deriv accounts
+                        </div>
+                        {user.accounts.map((a) => {
+                          const isActive = a.account_id === user.activeAccountId;
+                          return (
+                            <button
+                              key={a.account_id}
+                              onClick={() => {
+                                if (!isActive) switchAccount(a.account_id);
+                                setAccountOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 text-left transition ${
+                                isActive
+                                  ? 'bg-gray-100'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">
+                                  {a.account_type === 'real' ? '🇺🇸' : '🎮'}
+                                </span>
+                                <div>
+                                  <div className="text-sm font-semibold text-navy">
+                                    {a.currency}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 font-mono">
+                                    {a.loginid || a.account_id}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-sm font-mono font-semibold text-navy">
+                                {a.balance.toLocaleString('en-US', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}{' '}
+                                {a.currency}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Logout */}
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-5 py-3 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100 font-medium"
+                      >
+                        Logout →
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              /* ============ LOGGED-OUT STATE ============ */
+              <>
+                <button
+                  onClick={startDerivLogin}
+                  className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={startDerivLogin}
+                  className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 bg-brand-pink text-navy rounded-full font-semibold hover:opacity-90 whitespace-nowrap"
+                >
+                  Sign up
+                </button>
+              </>
+            )}
 
             {/* Hamburger — visible below xl */}
             <button
@@ -196,26 +301,42 @@ export default function Layout() {
                 </NavLink>
               );
             })}
-            {/* Auth buttons inside drawer for mobile */}
-            <div className="flex gap-2 p-4 sm:hidden">
-              <button
-                onClick={startDerivLogin}
-                className="flex-1 text-sm px-3 py-2 border border-white/40 rounded-full hover:bg-white/10"
-              >
-                Log in
-              </button>
-              <button
-                onClick={startDerivLogin}
-                className="flex-1 text-sm px-3 py-2 bg-brand-pink text-navy rounded-full font-semibold"
-              >
-                Sign up
-              </button>
-            </div>
+
+            {authorized && user ? (
+              <div className="p-4 flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-white/60">Balance</div>
+                  <div className="text-sm font-mono font-semibold">
+                    {user.balance.toFixed(2)} {user.currency}
+                  </div>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="text-sm px-4 py-2 border border-red-400 text-red-300 rounded-full font-semibold"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2 p-4 sm:hidden">
+                <button
+                  onClick={startDerivLogin}
+                  className="flex-1 text-sm px-3 py-2 border border-white/40 rounded-full hover:bg-white/10"
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={startDerivLogin}
+                  className="flex-1 text-sm px-3 py-2 bg-brand-pink text-navy rounded-full font-semibold"
+                >
+                  Sign up
+                </button>
+              </div>
+            )}
           </nav>
         )}
       </header>
 
-      {/* PAGE CONTENT */}
       <Outlet />
     </div>
   );
