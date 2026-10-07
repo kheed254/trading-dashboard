@@ -63,7 +63,6 @@ const RUN_ONCE_DEFAULTS: Record<string, string | number> = {
 const DURATION_TYPES = ['Ticks', 'Seconds', 'Minutes', 'Hours', 'Days'];
 const STAKE_TYPES = ['Initial Amount', 'Custom'];
 
-/* ---------- Symbol map ---------- */
 const SYMBOL_MAP: Record<string, string> = {
   'Volatility 10 (1s) Index': '1HZ10V',
   'Volatility 25 (1s) Index': '1HZ25V',
@@ -112,7 +111,6 @@ const nextId = () => `block-${Date.now()}-${idCounter++}`;
 
 const createBlock = (type: BlockType): Block => {
   const base: Block = { id: nextId(), type, open: true };
-
   if (type === 'trade_params') {
     base.market = 'Volatility 100 (1s) Index';
     base.tradeType = 'Up/Down › Rise/Fall';
@@ -125,28 +123,23 @@ const createBlock = (type: BlockType): Block => {
     base.durationValue = 1;
     base.stakeType = 'Initial Amount';
   }
-  if (type === 'purchase') {
-    base.direction = 'Rise';
-  }
+  if (type === 'purchase') base.direction = 'Rise';
   return base;
 };
 
-/* ---------- Map Trade Type → Deriv contract ---------- */
 function resolveContractType(
   tradeType: string,
   direction: 'Rise' | 'Fall'
 ): { contractType: string; barrier?: string } {
   const t = tradeType.toLowerCase();
-  if (t.includes('rise') || t.includes('fall')) {
+  if (t.includes('rise') || t.includes('fall'))
     return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' };
-  }
   if (t.includes('higher')) return { contractType: 'CALLE' };
   if (t.includes('lower')) return { contractType: 'PUTE' };
   if (t.includes('touch')) return { contractType: 'ONETOUCH' };
   if (t.includes('no touch')) return { contractType: 'NOTOUCH' };
-  if (t.includes('matches') || t.includes('differs')) {
+  if (t.includes('matches') || t.includes('differs'))
     return { contractType: 'DIGITDIFF', barrier: '5' };
-  }
   if (t.includes('even')) return { contractType: 'DIGITEVEN' };
   if (t.includes('odd')) return { contractType: 'DIGITODD' };
   if (t.includes('over')) return { contractType: 'DIGITOVER', barrier: '4' };
@@ -154,7 +147,6 @@ function resolveContractType(
   return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' };
 }
 
-/* ---------- Map Duration → duration / duration_unit ---------- */
 function resolveDuration(
   durationType: string,
   durationValue: number
@@ -179,9 +171,7 @@ function resolveDuration(
 export default function BotBuilder() {
   const [blocks, setBlocks] = useState<Block[]>(() => {
     const saved = loadBot();
-    if (saved && saved.blocks.length > 0) {
-      return saved.blocks as Block[];
-    }
+    if (saved && saved.blocks.length > 0) return saved.blocks as Block[];
     return [
       createBlock('trade_params'),
       createBlock('purchase'),
@@ -195,12 +185,10 @@ export default function BotBuilder() {
   const firstRun = useRef(true);
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
 
-  /* ---- Live auth + bot state ---- */
   const { authorized, placeTrade, openTrades } = useAuthWs();
 
   const [botRunning, setBotRunning] = useState(false);
   const botRunningRef = useRef(false);
-  const [botStatus, setBotStatus] = useState('');
   const [activeContractId, setActiveContractId] = useState<number | null>(null);
 
   const [botStats, setBotStats] = useState({
@@ -222,18 +210,13 @@ export default function BotBuilder() {
 
   const addJournal = (text: string, kind = 'info') => {
     setBotJournal((prev) =>
-      [
-        {
-          time: new Date().toLocaleTimeString(),
-          text,
-          kind,
-        },
-        ...prev,
-      ].slice(0, 100)
+      [{ time: new Date().toLocaleTimeString(), text, kind }, ...prev].slice(
+        0,
+        100
+      )
     );
   };
 
-  /* ----- AUTO-SAVE ----- */
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
@@ -246,56 +229,52 @@ export default function BotBuilder() {
     return () => clearTimeout(t);
   }, [blocks]);
 
-  /* ----- Keep running ref in sync ----- */
   useEffect(() => {
     botRunningRef.current = botRunning;
   }, [botRunning]);
 
-  /* ----- Watch for closed contracts to update stats ----- */
+  /* Watch for closed contracts */
   useEffect(() => {
     if (!openTrades.length) return;
-    /* Pick the most recently closed contract that we haven't counted yet */
     openTrades.forEach((t) => {
       if (t.is_sold && t.contract_id === activeContractId) {
         const won = t.profit > 0;
-        setBotStats((prev) => {
-          const newPL = +(prev.pl + t.profit).toFixed(2);
-          return {
-            runs: prev.runs,
-            wins: won ? prev.wins + 1 : prev.wins,
-            losses: !won ? prev.losses + 1 : prev.losses,
-            totalStake: +(prev.totalStake + t.buy_price).toFixed(2),
-            totalPayout: won
-              ? +(prev.totalPayout + t.buy_price + t.profit).toFixed(2)
-              : prev.totalPayout,
-            pl: newPL,
-          };
-        });
+        setBotStats((prev) => ({
+          runs: prev.runs,
+          wins: won ? prev.wins + 1 : prev.wins,
+          losses: !won ? prev.losses + 1 : prev.losses,
+          totalStake: +(prev.totalStake + t.buy_price).toFixed(2),
+          totalPayout: won
+            ? +(prev.totalPayout + t.buy_price + t.profit).toFixed(2)
+            : prev.totalPayout,
+          pl: +(prev.pl + t.profit).toFixed(2),
+        }));
         addJournal(
-          `${won ? 'Won +$' : 'Lost -$'}${Math.abs(t.profit).toFixed(2)} — contract #${t.contract_id}`,
+          `${won ? 'Won +$' : 'Lost -$'}${Math.abs(t.profit).toFixed(
+            2
+          )} — contract #${t.contract_id}`,
           won ? 'profit' : 'loss'
         );
         setActiveContractId(null);
-        /* Stop bot if stop-loss reached */
-        const stopLoss = getStopLoss();
+
+        /* Stop-loss check */
+        const sl = getStopLoss();
         setBotStats((prev) => {
-          if (stopLoss > 0 && prev.pl <= -stopLoss) {
+          if (sl > 0 && sl < 900 && prev.pl <= -sl) {
             if (botRunningRef.current) {
               setBotRunning(false);
-              addJournal(`Stop-loss hit ($${stopLoss}) — bot stopped`, 'loss');
+              addJournal(`Stop-loss hit ($${sl}) — bot stopped`, 'loss');
             }
           }
           return prev;
         });
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTrades, activeContractId]);
 
-  /* ---------- Extract config from blocks ---------- */
-  const getTradeParams = (): Block | undefined =>
-    blocks.find((b) => b.type === 'trade_params');
-  const getPurchaseBlock = (): Block | undefined =>
-    blocks.find((b) => b.type === 'purchase');
+  const getTradeParams = () => blocks.find((b) => b.type === 'trade_params');
+  const getPurchaseBlock = () => blocks.find((b) => b.type === 'purchase');
 
   const getStopLoss = (): number => {
     const tp = getTradeParams();
@@ -311,28 +290,19 @@ export default function BotBuilder() {
     return isNaN(val) || val <= 0 ? 0.35 : val;
   };
 
-  /* ---- block actions ---- */
-  const addBlock = (type: BlockType) => {
+  const addBlock = (type: BlockType) =>
     setBlocks((bs) => [...bs, createBlock(type)]);
-  };
-
-  const removeBlock = (id: string) => {
+  const removeBlock = (id: string) =>
     setBlocks((bs) => bs.filter((b) => b.id !== id));
-  };
-
-  const toggleBlock = (id: string) => {
+  const toggleBlock = (id: string) =>
     setBlocks((bs) =>
       bs.map((b) => (b.id === id ? { ...b, open: !b.open } : b))
     );
-  };
-
-  const updateBlock = (id: string, patch: Partial<Block>) => {
+  const updateBlock = (id: string, patch: Partial<Block>) =>
     setBlocks((bs) =>
       bs.map((b) => (b.id === id ? { ...b, ...patch } : b))
     );
-  };
 
-  /* ---- manual save / load ---- */
   const handleSave = () => {
     saveBot(blocks);
     setLastSavedAt(Date.now());
@@ -355,7 +325,6 @@ export default function BotBuilder() {
     const purchase = createBlock('purchase');
     const sell = createBlock('sell');
     const restart = createBlock('restart');
-
     switch (presetId) {
       case 'rise_fall':
         break;
@@ -369,11 +338,9 @@ export default function BotBuilder() {
         trade.tradeType = 'Digits › Matches/Differs';
         break;
     }
-
     setBlocks([trade, purchase, sell, restart]);
   };
 
-  /* ---- reset session stats ---- */
   const handleReset = () => {
     setBotStats({
       runs: 0,
@@ -387,7 +354,6 @@ export default function BotBuilder() {
     setActiveContractId(null);
   };
 
-  /* ---- the trading loop ---- */
   const placeOneTrade = () => {
     const tp = getTradeParams();
     const purchase = getPurchaseBlock();
@@ -399,14 +365,17 @@ export default function BotBuilder() {
     }
     const tradeType = tp?.tradeType || 'Up/Down › Rise/Fall';
     const direction = purchase?.direction || 'Rise';
-    const { contractType, barrier } = resolveContractType(tradeType, direction);
+    const { contractType, barrier } = resolveContractType(
+      tradeType,
+      direction
+    );
     const durType = tp?.durationType || 'Ticks';
     const durVal = tp?.durationValue ?? 1;
     const { duration, durationUnit } = resolveDuration(durType, durVal);
     const stake = getStake();
 
     addJournal(
-      `Placing ${contractType} on ${symbol} — stake $${stake.toFixed(2)}`,
+      `Placing ${contractType} on ${symbol} — $${stake.toFixed(2)}`,
       'buy'
     );
 
@@ -419,28 +388,23 @@ export default function BotBuilder() {
       barrier,
     });
 
-    /* Track the most recent openTrade as the active one */
     setTimeout(() => {
       setBotStats((prev) => ({ ...prev, runs: prev.runs + 1 }));
     }, 500);
   };
 
-  /* Auto-run trades while bot is running and no active contract */
   useEffect(() => {
     if (!botRunning) return;
-    if (activeContractId) return; // wait for the current one to settle
+    if (activeContractId) return;
     if (!authorized) return;
 
     const delay = setTimeout(() => {
-      /* Pick up the newest open trade as our active contract */
       const newestOpen = openTrades.find((t) => !t.is_sold);
       if (newestOpen) {
         setActiveContractId(newestOpen.contract_id);
         return;
       }
-      /* Otherwise, place a new one */
       placeOneTrade();
-      /* Mark the newly created contract after a short beat */
       setTimeout(() => {
         const newest = openTrades.find((t) => !t.is_sold);
         if (newest) setActiveContractId(newest.contract_id);
@@ -451,25 +415,20 @@ export default function BotBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botRunning, activeContractId, authorized, openTrades]);
 
-  /* toggle run */
   const toggleRun = () => {
     if (!authorized) {
-      alert('Please log in to run the bot with real trades.');
+      alert('Please log in to run the bot.');
       return;
     }
     const next = !botRunning;
     setBotRunning(next);
-    if (next) {
-      addJournal('Bot started', 'info');
-    } else {
-      addJournal('Bot stopped by user', 'info');
-    }
+    addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
   };
 
   /* ---------- render ---------- */
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* ===== LEFT SIDEBAR ===== */}
+      {/* LEFT SIDEBAR */}
       <aside className="w-64 shrink-0 border-r border-gray-200 bg-white flex flex-col">
         <button
           onClick={() => setShowQuickStrategy(true)}
@@ -524,9 +483,8 @@ export default function BotBuilder() {
         </div>
       </aside>
 
-      {/* ===== CENTER CANVAS ===== */}
+      {/* CENTER CANVAS */}
       <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
-        {/* Toolbar */}
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
@@ -544,14 +502,14 @@ export default function BotBuilder() {
           </button>
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
-            title="Load saved bot"
+            title="Load"
             onClick={handleLoad}
           >
             📁
           </button>
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
-            title="Save bot"
+            title="Save"
             onClick={handleSave}
           >
             💾
@@ -575,15 +533,7 @@ export default function BotBuilder() {
           </div>
         </div>
 
-        {/* Canvas */}
         <div className="flex-1 overflow-auto p-6 relative pb-40">
-          {blocks.length === 0 && (
-            <div className="text-center text-gray-400 text-sm mt-24">
-              No blocks on the canvas. <br />
-              Click a block on the left to add it.
-            </div>
-          )}
-
           {blocks.map((b, i) => (
             <BlockRenderer
               key={b.id}
@@ -601,38 +551,45 @@ export default function BotBuilder() {
         </div>
       </main>
 
-      {/* ===== RIGHT PANEL ===== */}
+      {/* RIGHT PANEL */}
       <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-        {/* Run button + status */}
+        {/* Run bar */}
         <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
           <button
             onClick={toggleRun}
             className={`${
               botRunning
-                ? 'bg-red-500 hover:bg-red-600'
+                ? 'bg-teal-500 hover:bg-teal-600'
                 : 'bg-teal-500 hover:bg-teal-600'
-            } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0`}
+            } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0 flex items-center gap-1.5`}
           >
-            {botRunning ? '■ Stop' : '▶ Run'}
+            {botRunning ? (
+              <>
+                <span className="w-3 h-3 bg-white/40 rounded-sm" />
+                Stop
+              </>
+            ) : (
+              <>▶ Run</>
+            )}
           </button>
           <div className="flex-1 text-xs text-gray-500">
             {botRunning ? (
               <>
                 <div className="flex justify-between mb-1">
                   <span>Bot is running…</span>
-                  <span>{botStats.runs} runs</span>
+                  <span>72%</span>
                 </div>
                 <div className="h-1 bg-gray-100 rounded overflow-hidden">
                   <div
-                    className="h-full bg-teal-500 transition-all animate-pulse"
-                    style={{ width: '60%' }}
+                    className="h-full bg-teal-500 transition-all"
+                    style={{ width: '72%' }}
                   />
                 </div>
               </>
             ) : (
               <div className="flex justify-between">
                 <span>Bot is not running</span>
-                <span>{botStats.runs} runs</span>
+                <span>0% complete</span>
               </div>
             )}
           </div>
@@ -644,22 +601,26 @@ export default function BotBuilder() {
             <button
               key={k}
               onClick={() => setDetailTab(k)}
-              className={`px-4 py-2 capitalize ${
+              className={`flex-1 py-2.5 capitalize text-center text-sm ${
                 detailTab === k
-                  ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
+                  ? 'border-b-2 border-blue-600 text-blue-600 font-semibold'
                   : 'text-gray-500 hover:text-gray-800'
               }`}
             >
-              {k}
+              {k === 'summary'
+                ? 'Summary'
+                : k === 'transactions'
+                ? 'Transactions'
+                : 'Journal'}
             </button>
           ))}
         </div>
 
-        {/* Tab content */}
+        {/* Content */}
         <div className="flex-1 overflow-y-auto">
+          {/* ========== SUMMARY ========== */}
           {detailTab === 'summary' &&
             (() => {
-              /* Pick the active contract (open) or most recent one */
               const active = openTrades.find(
                 (t) => t.contract_id === activeContractId && !t.is_sold
               );
@@ -714,7 +675,6 @@ export default function BotBuilder() {
                         {show.contract_type}
                       </div>
 
-                      {/* progress bar */}
                       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
                         <div
                           className={`h-full transition-all ${
@@ -751,99 +711,129 @@ export default function BotBuilder() {
                             }`}
                           >
                             {show.is_sold
-                              ? `${
-                                  show.profit >= 0 ? '+' : ''
-                                }${show.profit.toFixed(2)}`
+                              ? `${show.profit >= 0 ? '+' : ''}${show.profit.toFixed(
+                                  2
+                                )}`
                               : show.payout.toFixed(2)}{' '}
                             USD
                           </div>
                         </div>
                       </div>
-
-                      {show.entry_spot ? (
-                        <div className="grid grid-cols-2 gap-3 text-xs border-t border-gray-100 pt-3">
-                          <div>
-                            <div className="text-gray-500">Entry spot</div>
-                            <div className="font-mono text-navy mt-0.5">
-                              {show.entry_spot}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-gray-500">Current spot</div>
-                            <div className="font-mono text-navy mt-0.5">
-                              {show.current_spot || '—'}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
                     </>
                   )}
                 </div>
               );
             })()}
 
+          {/* ========== TRANSACTIONS ========== */}
           {detailTab === 'transactions' && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] min-w-[400px]">
-                <thead>
-                  <tr className="text-gray-400 border-b border-gray-100">
-                    <th className="text-left px-3 py-2 font-medium">Type</th>
-                    <th className="text-right px-3 py-2 font-medium">
-                      Entry/Exit
-                    </th>
-                    <th className="text-right px-3 py-2 font-medium">
-                      Stake
-                    </th>
-                    <th className="text-right px-3 py-2 font-medium">P/L</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {openTrades.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="text-center text-gray-400 py-8"
-                      >
-                        No trades yet
-                      </td>
-                    </tr>
-                  ) : (
-                    openTrades.map((t) => (
-                      <tr
+            <div>
+              {/* Buttons */}
+              <div className="flex gap-2 px-3 py-2 border-b border-gray-100">
+                <button
+                  disabled
+                  className="text-[11px] px-3 py-1.5 rounded border border-gray-200 text-gray-400"
+                >
+                  Download
+                </button>
+                <button
+                  disabled
+                  className="text-[11px] px-3 py-1.5 rounded border border-gray-200 text-gray-700 font-medium"
+                >
+                  View Detail
+                </button>
+              </div>
+
+              {/* Header */}
+              <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 py-2 text-[10px] text-gray-500 font-medium border-b border-gray-100">
+                <div>Type</div>
+                <div>Entry/Exit spot</div>
+                <div className="text-right">Buy price and P/L</div>
+              </div>
+
+              {/* Rows */}
+              {openTrades.length === 0 ? (
+                <div className="text-center text-gray-400 text-xs py-10">
+                  No transactions yet
+                </div>
+              ) : (
+                <div>
+                  {openTrades.map((t) => {
+                    const won = t.is_sold && t.profit > 0;
+                    const lost = t.is_sold && t.profit <= 0;
+                    return (
+                      <div
                         key={t.contract_id}
-                        className="border-b border-gray-50 hover:bg-gray-50"
+                        className="border-b border-gray-100 py-2"
                       >
-                        <td className="px-3 py-2 text-navy font-medium">
-                          {t.contract_type}
-                        </td>
-                        <td className="text-right px-3 py-2 font-mono text-gray-600">
-                          {t.entry_spot || '—'} →{' '}
-                          {t.is_sold ? t.current_spot || '—' : '…'}
-                        </td>
-                        <td className="text-right px-3 py-2 font-mono text-navy">
-                          {t.buy_price.toFixed(2)}
-                        </td>
-                        <td
-                          className={`text-right px-3 py-2 font-mono font-semibold ${
-                            t.is_sold
-                              ? t.profit >= 0
+                        <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center">
+                          {/* Type + icon */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-base leading-none">
+                              {t.contract_type.includes('DIGIT')
+                                ? '🔢'
+                                : t.contract_type.includes('CALL') ||
+                                  t.contract_type.includes('PUT')
+                                ? '↕️'
+                                : '📊'}
+                            </span>
+                            <span className="text-[11px] font-medium text-gray-700">
+                              {t.contract_type}
+                            </span>
+                          </div>
+
+                          {/* Entry spot */}
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <span className="text-red-500 text-base leading-none">
+                              ○
+                            </span>
+                            <span className="font-mono text-gray-700">
+                              {t.entry_spot || '—'}
+                            </span>
+                          </div>
+
+                          {/* Buy price */}
+                          <div className="text-right text-[11px] font-mono text-gray-700">
+                            {t.buy_price.toFixed(2)} USD
+                          </div>
+                        </div>
+
+                        {/* Second row: exit spot + P/L */}
+                        <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center mt-1">
+                          <div />
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <span className="text-gray-400 text-base leading-none">
+                              ○
+                            </span>
+                            <span className="font-mono text-gray-700">
+                              {t.is_sold ? t.current_spot || '—' : '…'}
+                            </span>
+                          </div>
+                          <div
+                            className={`text-right text-[11px] font-mono font-semibold ${
+                              won
                                 ? 'text-green-600'
-                                : 'text-red-600'
-                              : 'text-gray-400'
-                          }`}
-                        >
-                          {t.is_sold
-                            ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)}`
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                                : lost
+                                ? 'text-red-600'
+                                : 'text-gray-400'
+                            }`}
+                          >
+                            {t.is_sold
+                              ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(
+                                  2
+                                )} USD`
+                              : 'open'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
+          {/* ========== JOURNAL ========== */}
           {detailTab === 'journal' && (
             <div className="p-3 text-xs">
               {botJournal.length === 0 ? (
@@ -1014,8 +1004,7 @@ function BlockRenderer({
                         onChange={(e) =>
                           onUpdate({
                             runOnceValues: {
-                              ...(block.runOnceValues ??
-                                RUN_ONCE_DEFAULTS),
+                              ...(block.runOnceValues ?? RUN_ONCE_DEFAULTS),
                               [name]: e.target.value,
                             },
                           })
@@ -1175,7 +1164,6 @@ function CheckboxRow({
 }
 
 type OptionGroup = { group: string; options: string[] };
-
 type SelectFieldProps = {
   label: string;
   value: string;
