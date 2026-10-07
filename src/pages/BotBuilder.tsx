@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
+import { useAuthWs } from '../lib/auth-ws';
 
 /* ---------- Option lists ---------- */
 const MARKETS = [
@@ -60,8 +61,24 @@ const RUN_ONCE_DEFAULTS: Record<string, string | number> = {
 };
 
 const DURATION_TYPES = ['Ticks', 'Seconds', 'Minutes', 'Hours', 'Days'];
-
 const STAKE_TYPES = ['Initial Amount', 'Custom'];
+
+/* ---------- Symbol map ---------- */
+const SYMBOL_MAP: Record<string, string> = {
+  'Volatility 10 (1s) Index': '1HZ10V',
+  'Volatility 25 (1s) Index': '1HZ25V',
+  'Volatility 30 (1s) Index': '1HZ30V',
+  'Volatility 50 (1s) Index': '1HZ50V',
+  'Volatility 75 (1s) Index': '1HZ75V',
+  'Volatility 100 (1s) Index': '1HZ100V',
+  'Bull Market Index': 'BOOM1000',
+  'Bear Market Index': 'CRASH1000',
+  'EUR/USD': 'frxEURUSD',
+  'GBP/USD': 'frxGBPUSD',
+  'USD/JPY': 'frxUSDJPY',
+  'BTC/USD': 'cryBTCUSD',
+  'ETH/USD': 'cryETHUSD',
+};
 
 /* ---------- Types ---------- */
 type BlockType = 'trade_params' | 'purchase' | 'sell' | 'restart';
@@ -105,7 +122,7 @@ const createBlock = (type: BlockType): Block => {
     base.restartLastTrade = true;
     base.runOnceValues = { ...RUN_ONCE_DEFAULTS };
     base.durationType = 'Ticks';
-    base.durationValue = 7;
+    base.durationValue = 1;
     base.stakeType = 'Initial Amount';
   }
   if (type === 'purchase') {
@@ -114,7 +131,51 @@ const createBlock = (type: BlockType): Block => {
   return base;
 };
 
-/* ---------- Main page ---------- */
+/* ---------- Map Trade Type → Deriv contract ---------- */
+function resolveContractType(
+  tradeType: string,
+  direction: 'Rise' | 'Fall'
+): { contractType: string; barrier?: string } {
+  const t = tradeType.toLowerCase();
+  if (t.includes('rise') || t.includes('fall')) {
+    return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' };
+  }
+  if (t.includes('higher')) return { contractType: 'CALLE' };
+  if (t.includes('lower')) return { contractType: 'PUTE' };
+  if (t.includes('touch')) return { contractType: 'ONETOUCH' };
+  if (t.includes('no touch')) return { contractType: 'NOTOUCH' };
+  if (t.includes('matches') || t.includes('differs')) {
+    return { contractType: 'DIGITDIFF', barrier: '5' };
+  }
+  if (t.includes('even')) return { contractType: 'DIGITEVEN' };
+  if (t.includes('odd')) return { contractType: 'DIGITODD' };
+  if (t.includes('over')) return { contractType: 'DIGITOVER', barrier: '4' };
+  if (t.includes('under')) return { contractType: 'DIGITUNDER', barrier: '5' };
+  return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' };
+}
+
+/* ---------- Map Duration → duration / duration_unit ---------- */
+function resolveDuration(
+  durationType: string,
+  durationValue: number
+): { duration: number; durationUnit: string } {
+  switch (durationType) {
+    case 'Ticks':
+      return { duration: Math.max(1, durationValue), durationUnit: 't' };
+    case 'Seconds':
+      return { duration: Math.max(15, durationValue), durationUnit: 's' };
+    case 'Minutes':
+      return { duration: Math.max(1, durationValue), durationUnit: 'm' };
+    case 'Hours':
+      return { duration: Math.max(1, durationValue), durationUnit: 'h' };
+    case 'Days':
+      return { duration: Math.max(1, durationValue), durationUnit: 'd' };
+    default:
+      return { duration: Math.max(1, durationValue), durationUnit: 't' };
+  }
+}
+
+/* ---------- Main component ---------- */
 export default function BotBuilder() {
   const [blocks, setBlocks] = useState<Block[]>(() => {
     const saved = loadBot();
@@ -134,15 +195,45 @@ export default function BotBuilder() {
   const firstRun = useRef(true);
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
 
-  /* Run state */
-  const [isRunning, setIsRunning] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [runs, setRuns] = useState(0);
-  const [wins, setWins] = useState(0);
-  const [losses, setLosses] = useState(0);
-  const [stake, setStake] = useState(0);
-  const [payout, setPayout] = useState(0);
+  /* ---- Live auth + bot state ---- */
+  const { authorized, placeTrade, openTrades } = useAuthWs();
 
+  const [botRunning, setBotRunning] = useState(false);
+  const botRunningRef = useRef(false);
+  const [botStatus, setBotStatus] = useState('');
+  const [activeContractId, setActiveContractId] = useState<number | null>(null);
+
+  const [botStats, setBotStats] = useState({
+    runs: 0,
+    wins: 0,
+    losses: 0,
+    totalStake: 0,
+    totalPayout: 0,
+    pl: 0,
+  });
+
+  const [botJournal, setBotJournal] = useState<
+    { time: string; text: string; kind: string }[]
+  >([]);
+
+  const [detailTab, setDetailTab] = useState<
+    'summary' | 'transactions' | 'journal'
+  >('summary');
+
+  const addJournal = (text: string, kind = 'info') => {
+    setBotJournal((prev) =>
+      [
+        {
+          time: new Date().toLocaleTimeString(),
+          text,
+          kind,
+        },
+        ...prev,
+      ].slice(0, 100)
+    );
+  };
+
+  /* ----- AUTO-SAVE ----- */
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
@@ -155,6 +246,72 @@ export default function BotBuilder() {
     return () => clearTimeout(t);
   }, [blocks]);
 
+  /* ----- Keep running ref in sync ----- */
+  useEffect(() => {
+    botRunningRef.current = botRunning;
+  }, [botRunning]);
+
+  /* ----- Watch for closed contracts to update stats ----- */
+  useEffect(() => {
+    if (!openTrades.length) return;
+    /* Pick the most recently closed contract that we haven't counted yet */
+    openTrades.forEach((t) => {
+      if (t.is_sold && t.contract_id === activeContractId) {
+        const won = t.profit > 0;
+        setBotStats((prev) => {
+          const newPL = +(prev.pl + t.profit).toFixed(2);
+          return {
+            runs: prev.runs,
+            wins: won ? prev.wins + 1 : prev.wins,
+            losses: !won ? prev.losses + 1 : prev.losses,
+            totalStake: +(prev.totalStake + t.buy_price).toFixed(2),
+            totalPayout: won
+              ? +(prev.totalPayout + t.buy_price + t.profit).toFixed(2)
+              : prev.totalPayout,
+            pl: newPL,
+          };
+        });
+        addJournal(
+          `${won ? 'Won +$' : 'Lost -$'}${Math.abs(t.profit).toFixed(2)} — contract #${t.contract_id}`,
+          won ? 'profit' : 'loss'
+        );
+        setActiveContractId(null);
+        /* Stop bot if stop-loss reached */
+        const stopLoss = getStopLoss();
+        setBotStats((prev) => {
+          if (stopLoss > 0 && prev.pl <= -stopLoss) {
+            if (botRunningRef.current) {
+              setBotRunning(false);
+              addJournal(`Stop-loss hit ($${stopLoss}) — bot stopped`, 'loss');
+            }
+          }
+          return prev;
+        });
+      }
+    });
+  }, [openTrades, activeContractId]);
+
+  /* ---------- Extract config from blocks ---------- */
+  const getTradeParams = (): Block | undefined =>
+    blocks.find((b) => b.type === 'trade_params');
+  const getPurchaseBlock = (): Block | undefined =>
+    blocks.find((b) => b.type === 'purchase');
+
+  const getStopLoss = (): number => {
+    const tp = getTradeParams();
+    const raw = tp?.runOnceValues?.['Stop Loss'];
+    const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+    return isNaN(val) ? 0 : val;
+  };
+
+  const getStake = (): number => {
+    const tp = getTradeParams();
+    const raw = tp?.runOnceValues?.['Initial Amount'];
+    const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+    return isNaN(val) || val <= 0 ? 0.35 : val;
+  };
+
+  /* ---- block actions ---- */
   const addBlock = (type: BlockType) => {
     setBlocks((bs) => [...bs, createBlock(type)]);
   };
@@ -175,6 +332,7 @@ export default function BotBuilder() {
     );
   };
 
+  /* ---- manual save / load ---- */
   const handleSave = () => {
     saveBot(blocks);
     setLastSavedAt(Date.now());
@@ -215,53 +373,100 @@ export default function BotBuilder() {
     setBlocks([trade, purchase, sell, restart]);
   };
 
+  /* ---- reset session stats ---- */
   const handleReset = () => {
-    setRuns(0);
-    setWins(0);
-    setLosses(0);
-    setStake(0);
-    setPayout(0);
-    setProgress(0);
-    setIsRunning(false);
+    setBotStats({
+      runs: 0,
+      wins: 0,
+      losses: 0,
+      totalStake: 0,
+      totalPayout: 0,
+      pl: 0,
+    });
+    setBotJournal([]);
+    setActiveContractId(null);
   };
 
-  const handleRun = () => {
-    if (isRunning) {
-      setIsRunning(false);
-      setProgress(0);
+  /* ---- the trading loop ---- */
+  const placeOneTrade = () => {
+    const tp = getTradeParams();
+    const purchase = getPurchaseBlock();
+    const market = tp?.market || 'Volatility 100 (1s) Index';
+    const symbol = SYMBOL_MAP[market];
+    if (!symbol) {
+      addJournal(`Unknown market: ${market}`, 'loss');
       return;
     }
+    const tradeType = tp?.tradeType || 'Up/Down › Rise/Fall';
+    const direction = purchase?.direction || 'Rise';
+    const { contractType, barrier } = resolveContractType(tradeType, direction);
+    const durType = tp?.durationType || 'Ticks';
+    const durVal = tp?.durationValue ?? 1;
+    const { duration, durationUnit } = resolveDuration(durType, durVal);
+    const stake = getStake();
 
-    setIsRunning(true);
-    setProgress(0);
+    addJournal(
+      `Placing ${contractType} on ${symbol} — stake $${stake.toFixed(2)}`,
+      'buy'
+    );
 
-    const startTime = Date.now();
-    const duration = 5000;
+    placeTrade({
+      symbol,
+      contractType,
+      stake,
+      duration,
+      durationUnit,
+      barrier,
+    });
 
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min(100, (elapsed / duration) * 100);
-      setProgress(pct);
-
-      if (pct >= 100) {
-        clearInterval(interval);
-
-        const stakeAmt = 1.0;
-        const didWin = Math.random() > 0.45;
-        const payoutAmt = didWin ? stakeAmt * 1.95 : 0;
-
-        setStake((s) => s + stakeAmt);
-        setPayout((p) => p + payoutAmt);
-        setRuns((r) => r + 1);
-        if (didWin) setWins((w) => w + 1);
-        else setLosses((l) => l + 1);
-
-        setIsRunning(false);
-        setProgress(0);
-      }
-    }, 50);
+    /* Track the most recent openTrade as the active one */
+    setTimeout(() => {
+      setBotStats((prev) => ({ ...prev, runs: prev.runs + 1 }));
+    }, 500);
   };
 
+  /* Auto-run trades while bot is running and no active contract */
+  useEffect(() => {
+    if (!botRunning) return;
+    if (activeContractId) return; // wait for the current one to settle
+    if (!authorized) return;
+
+    const delay = setTimeout(() => {
+      /* Pick up the newest open trade as our active contract */
+      const newestOpen = openTrades.find((t) => !t.is_sold);
+      if (newestOpen) {
+        setActiveContractId(newestOpen.contract_id);
+        return;
+      }
+      /* Otherwise, place a new one */
+      placeOneTrade();
+      /* Mark the newly created contract after a short beat */
+      setTimeout(() => {
+        const newest = openTrades.find((t) => !t.is_sold);
+        if (newest) setActiveContractId(newest.contract_id);
+      }, 1200);
+    }, 900);
+
+    return () => clearTimeout(delay);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [botRunning, activeContractId, authorized, openTrades]);
+
+  /* toggle run */
+  const toggleRun = () => {
+    if (!authorized) {
+      alert('Please log in to run the bot with real trades.');
+      return;
+    }
+    const next = !botRunning;
+    setBotRunning(next);
+    if (next) {
+      addJournal('Bot started', 'info');
+    } else {
+      addJournal('Bot stopped by user', 'info');
+    }
+  };
+
+  /* ---------- render ---------- */
   return (
     <div className="flex h-[calc(100vh-56px)] overflow-hidden">
       {/* ===== LEFT SIDEBAR ===== */}
@@ -390,7 +595,6 @@ export default function BotBuilder() {
             />
           ))}
 
-          {/* AI button moved to bottom-right so it doesn't cover Trade options */}
           <button className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
             AI
           </button>
@@ -399,86 +603,301 @@ export default function BotBuilder() {
 
       {/* ===== RIGHT PANEL ===== */}
       <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
+        {/* Run button + status */}
         <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
           <button
-            onClick={handleRun}
+            onClick={toggleRun}
             className={`${
-              isRunning
+              botRunning
                 ? 'bg-red-500 hover:bg-red-600'
                 : 'bg-teal-500 hover:bg-teal-600'
             } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0`}
           >
-            ▶ Run
+            {botRunning ? '■ Stop' : '▶ Run'}
           </button>
           <div className="flex-1 text-xs text-gray-500">
-            {isRunning ? (
+            {botRunning ? (
               <>
                 <div className="flex justify-between mb-1">
                   <span>Bot is running…</span>
-                  <span>{Math.round(progress)}%</span>
+                  <span>{botStats.runs} runs</span>
                 </div>
                 <div className="h-1 bg-gray-100 rounded overflow-hidden">
                   <div
-                    className="h-full bg-teal-500 transition-all"
-                    style={{ width: `${progress}%` }}
+                    className="h-full bg-teal-500 transition-all animate-pulse"
+                    style={{ width: '60%' }}
                   />
                 </div>
               </>
             ) : (
               <div className="flex justify-between">
                 <span>Bot is not running</span>
-                <span>0% complete</span>
+                <span>{botStats.runs} runs</span>
               </div>
             )}
           </div>
         </div>
 
+        {/* Tabs */}
         <div className="flex border-b border-gray-200 text-sm">
-          <button className="px-4 py-2 border-b-2 border-blue-600 text-blue-600 font-medium">
-            Summary
-          </button>
-          <button className="px-4 py-2 text-gray-500 hover:text-gray-800">
-            Transactions
-          </button>
-          <button className="px-4 py-2 text-gray-500 hover:text-gray-800">
-            Journal
-          </button>
+          {(['summary', 'transactions', 'journal'] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setDetailTab(k)}
+              className={`px-4 py-2 capitalize ${
+                detailTab === k
+                  ? 'border-b-2 border-blue-600 text-blue-600 font-medium'
+                  : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              {k}
+            </button>
+          ))}
         </div>
 
-        <div className="flex-1 flex flex-col justify-center items-center text-center px-6 text-sm text-gray-500">
-          {isRunning ? (
-            <>
-              <div className="text-navy font-semibold mb-2">Running…</div>
-              <div className="text-xs">{Math.round(progress)}% complete</div>
-            </>
-          ) : runs === 0 ? (
-            <>
-              When you're ready to trade, hit{' '}
-              <span className="font-semibold">Run</span>.
-              <br />
-              You'll be able to track your bot's performance here.
-            </>
-          ) : (
-            <>
-              <div className="text-navy font-semibold mb-2">Run complete</div>
-              <div className="text-xs">
-                {runs} run{runs !== 1 ? 's' : ''} · {wins} win
-                {wins !== 1 ? 's' : ''} · {losses} loss
-                {losses !== 1 ? 'es' : ''}
-              </div>
-            </>
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto">
+          {detailTab === 'summary' &&
+            (() => {
+              /* Pick the active contract (open) or most recent one */
+              const active = openTrades.find(
+                (t) => t.contract_id === activeContractId && !t.is_sold
+              );
+              const last = openTrades[0];
+              const show = active || last;
+
+              return (
+                <div className="p-4">
+                  {!show ? (
+                    <div className="flex flex-col items-center justify-center text-center text-gray-400 text-xs h-full py-12">
+                      {botRunning ? (
+                        <>
+                          <div className="text-navy text-sm font-semibold mb-2">
+                            Placing first trade…
+                          </div>
+                          <div>Waiting for market data</div>
+                        </>
+                      ) : (
+                        <>
+                          When you're ready to trade, hit{' '}
+                          <span className="font-semibold">Run</span>.
+                          <br />
+                          You'll be able to track your bot's performance
+                          here.
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">
+                          {show.symbol}
+                        </div>
+                        <div
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            show.is_sold
+                              ? show.profit > 0
+                                ? 'bg-green-50 text-green-700'
+                                : 'bg-red-50 text-red-700'
+                              : 'bg-teal-50 text-teal-700'
+                          }`}
+                        >
+                          {show.is_sold
+                            ? show.profit > 0
+                              ? 'WON'
+                              : 'LOST'
+                            : 'LIVE'}
+                        </div>
+                      </div>
+
+                      <div className="text-sm font-semibold text-navy mb-3">
+                        {show.contract_type}
+                      </div>
+
+                      {/* progress bar */}
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+                        <div
+                          className={`h-full transition-all ${
+                            show.is_sold
+                              ? show.profit > 0
+                                ? 'bg-green-500'
+                                : 'bg-red-500'
+                              : 'bg-teal-500 animate-pulse'
+                          }`}
+                          style={{
+                            width: show.is_sold ? '100%' : '45%',
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-xs mb-4">
+                        <div>
+                          <div className="text-gray-500">Stake</div>
+                          <div className="font-mono font-semibold text-navy mt-0.5">
+                            {show.buy_price.toFixed(2)} USD
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-gray-500">
+                            {show.is_sold ? 'Profit' : 'Payout'}
+                          </div>
+                          <div
+                            className={`font-mono font-semibold mt-0.5 ${
+                              show.is_sold
+                                ? show.profit >= 0
+                                  ? 'text-green-600'
+                                  : 'text-red-600'
+                                : 'text-navy'
+                            }`}
+                          >
+                            {show.is_sold
+                              ? `${
+                                  show.profit >= 0 ? '+' : ''
+                                }${show.profit.toFixed(2)}`
+                              : show.payout.toFixed(2)}{' '}
+                            USD
+                          </div>
+                        </div>
+                      </div>
+
+                      {show.entry_spot ? (
+                        <div className="grid grid-cols-2 gap-3 text-xs border-t border-gray-100 pt-3">
+                          <div>
+                            <div className="text-gray-500">Entry spot</div>
+                            <div className="font-mono text-navy mt-0.5">
+                              {show.entry_spot}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-gray-500">Current spot</div>
+                            <div className="font-mono text-navy mt-0.5">
+                              {show.current_spot || '—'}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+
+          {detailTab === 'transactions' && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[11px] min-w-[400px]">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left px-3 py-2 font-medium">Type</th>
+                    <th className="text-right px-3 py-2 font-medium">
+                      Entry/Exit
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium">
+                      Stake
+                    </th>
+                    <th className="text-right px-3 py-2 font-medium">P/L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openTrades.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="text-center text-gray-400 py-8"
+                      >
+                        No trades yet
+                      </td>
+                    </tr>
+                  ) : (
+                    openTrades.map((t) => (
+                      <tr
+                        key={t.contract_id}
+                        className="border-b border-gray-50 hover:bg-gray-50"
+                      >
+                        <td className="px-3 py-2 text-navy font-medium">
+                          {t.contract_type}
+                        </td>
+                        <td className="text-right px-3 py-2 font-mono text-gray-600">
+                          {t.entry_spot || '—'} →{' '}
+                          {t.is_sold ? t.current_spot || '—' : '…'}
+                        </td>
+                        <td className="text-right px-3 py-2 font-mono text-navy">
+                          {t.buy_price.toFixed(2)}
+                        </td>
+                        <td
+                          className={`text-right px-3 py-2 font-mono font-semibold ${
+                            t.is_sold
+                              ? t.profit >= 0
+                                ? 'text-green-600'
+                                : 'text-red-600'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          {t.is_sold
+                            ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)}`
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {detailTab === 'journal' && (
+            <div className="p-3 text-xs">
+              {botJournal.length === 0 ? (
+                <div className="text-center text-gray-400 py-8">
+                  Journal empty
+                </div>
+              ) : (
+                botJournal.map((j, i) => (
+                  <div
+                    key={i}
+                    className="border-b border-gray-50 py-2 last:border-0"
+                  >
+                    <div className="text-[9px] text-gray-400 font-mono">
+                      {j.time}
+                    </div>
+                    <div
+                      className={`mt-0.5 ${
+                        j.kind === 'profit'
+                          ? 'text-green-600'
+                          : j.kind === 'loss'
+                          ? 'text-red-600'
+                          : j.kind === 'buy'
+                          ? 'text-navy'
+                          : 'text-gray-500'
+                      }`}
+                    >
+                      {j.text}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
 
+        {/* Bottom stats */}
         <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center">
-          <Stat label="Total stake" value={`${stake.toFixed(2)} USD`} />
-          <Stat label="Total payout" value={`${payout.toFixed(2)} USD`} />
-          <Stat label="No. of runs" value={String(runs)} />
-          <Stat label="Contracts lost" value={String(losses)} />
-          <Stat label="Contracts won" value={String(wins)} />
+          <Stat
+            label="Total stake"
+            value={`${botStats.totalStake.toFixed(2)} USD`}
+          />
+          <Stat
+            label="Total payout"
+            value={`${botStats.totalPayout.toFixed(2)} USD`}
+          />
+          <Stat label="No. of runs" value={String(botStats.runs)} />
+          <Stat label="Contracts lost" value={String(botStats.losses)} />
+          <Stat label="Contracts won" value={String(botStats.wins)} />
           <Stat
             label="Total profit/loss"
-            value={`${(payout - stake).toFixed(2)} USD`}
+            value={`${botStats.pl.toFixed(2)} USD`}
+            highlight={
+              botStats.pl > 0 ? 'green' : botStats.pl < 0 ? 'red' : 'none'
+            }
           />
         </div>
 
@@ -613,7 +1032,9 @@ function BlockRenderer({
                 <span className="text-gray-500 w-20">Duration:</span>
                 <select
                   value={block.durationType ?? 'Ticks'}
-                  onChange={(e) => onUpdate({ durationType: e.target.value })}
+                  onChange={(e) =>
+                    onUpdate({ durationType: e.target.value })
+                  }
                   className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer"
                 >
                   {DURATION_TYPES.map((d) => (
@@ -624,7 +1045,7 @@ function BlockRenderer({
                 </select>
                 <input
                   type="number"
-                  value={block.durationValue ?? 7}
+                  value={block.durationValue ?? 1}
                   onChange={(e) =>
                     onUpdate({ durationValue: Number(e.target.value) })
                   }
@@ -700,11 +1121,25 @@ function BlockRenderer({
 }
 
 /* ---------- Small components ---------- */
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({
+  label,
+  value,
+  highlight = 'none',
+}: {
+  label: string;
+  value: string;
+  highlight?: 'none' | 'green' | 'red';
+}) {
+  const color =
+    highlight === 'green'
+      ? 'text-green-600'
+      : highlight === 'red'
+      ? 'text-red-600'
+      : 'text-navy';
   return (
     <div>
-      <div className="text-gray-500 font-medium">{label}</div>
-      <div className="text-navy font-semibold mt-1">{value}</div>
+      <div className="text-gray-500 font-medium text-[10px]">{label}</div>
+      <div className={`font-semibold mt-1 ${color}`}>{value}</div>
     </div>
   );
 }
