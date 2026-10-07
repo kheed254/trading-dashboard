@@ -7,6 +7,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import { useTradeStore } from '../lib/trading/store';
+import { useAuthWs } from '../lib/auth-ws';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -41,7 +42,11 @@ export default function ManualTrader() {
   const [connected, setConnected] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
 
-  const { placeTrade } = useTradeStore();
+  /* Paper-trade fallback (works offline / not logged in) */
+  const { placeTrade: placePaperTrade } = useTradeStore();
+
+  /* Real Deriv trade (requires login) */
+  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -168,10 +173,29 @@ export default function ManualTrader() {
     };
   }, [symbol]);
 
+  /* ---------- Buy ---------- */
   const handleBuy = () => {
-    const id = placeTrade({
+    /* If authenticated → place a REAL Deriv demo trade */
+    if (authorized) {
+      placeRealTrade({
+        symbol,
+        contractType: 'CALL',
+        stake,
+        duration: 5,
+        durationUnit: 't',
+      });
+      console.log('[Manual Trader] Real trade sent:', {
+        symbol,
+        contractType: 'CALL',
+        stake,
+      });
+      return;
+    }
+
+    /* Otherwise fallback to paper trade */
+    const id = placePaperTrade({
       market: marketName,
-      symbol: MARKET_MAP[marketName],
+      symbol,
       type: 'rise_fall',
       direction: 'Rise',
       stake,
@@ -181,14 +205,15 @@ export default function ManualTrader() {
 
     if (id) {
       alert(
-        `Trade placed!\n${marketName}\nStake: $${stake.toFixed(
+        `Paper trade placed (not logged in).\n${marketName}\nStake: $${stake.toFixed(
           2
-        )} → Potential payout: $${(stake * 1.95).toFixed(
-          2
-        )}\nCheck Reports in a few seconds.`
+        )}`
       );
     }
   };
+
+  /* Count of currently open real trades */
+  const openCount = openTrades.filter((t) => !t.is_sold).length;
 
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-56px)] overflow-hidden">
@@ -248,6 +273,18 @@ export default function ManualTrader() {
                 : 'Multipliers'}
             </span>
           </button>
+
+          {/* Live trade status */}
+          {openCount > 0 && (
+            <div className="mb-4 bg-teal-50 border border-teal-200 rounded-md p-3">
+              <div className="text-xs font-semibold text-teal-700">
+                {openCount} live trade{openCount !== 1 ? 's' : ''} open
+              </div>
+              <div className="text-[10px] text-teal-600 mt-1">
+                Tracking on the WebSocket
+              </div>
+            </div>
+          )}
 
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
@@ -325,8 +362,14 @@ export default function ManualTrader() {
             className="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-4 rounded-md flex items-center justify-center gap-3 transition"
           >
             <span className="text-lg">📈</span>
-            <span>Buy</span>
+            <span>{authorized ? 'Buy (Demo)' : 'Buy'}</span>
           </button>
+
+          {!authorized && (
+            <div className="mt-2 text-[10px] text-gray-400 text-center">
+              Not logged in — paper trade mode
+            </div>
+          )}
         </div>
       </aside>
 
@@ -349,7 +392,6 @@ export default function ManualTrader() {
               />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3">
-              {/* Left column: categories */}
               <div className="border-r border-gray-100 py-2">
                 {[
                   { id: 'all', label: 'All' },
@@ -371,7 +413,6 @@ export default function ManualTrader() {
                 ))}
               </div>
 
-              {/* Right: cards */}
               <div className="md:col-span-2 p-4 space-y-3">
                 <div className="text-xs text-gray-500">
                   Learn more about trade types ›
