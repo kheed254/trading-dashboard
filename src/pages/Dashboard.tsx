@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import SignalCard from '../components/SignalCard';
 import { useMultiTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws';
