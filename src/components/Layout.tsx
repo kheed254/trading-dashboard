@@ -73,24 +73,20 @@ function fmtMoney(n: number): string {
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountsExpanded, setAccountsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<'real' | 'demo' | null>(null);
   const location = useLocation();
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
   const { authorized, user, switchAccount } = useAuthWs();
 
-  /* Determine the currently active tab based on which account is live */
   const tab: 'real' | 'demo' =
     activeTab ?? (user?.isVirtual ? 'demo' : 'real');
 
-  /* Find the account that matches the active tab */
-  const tabAccount = user?.accounts.find(
-    (a) => a.account_type === tab
-  );
+  const tabAccount = user?.accounts.find((a) => a.account_type === tab);
 
-  /* Balance to show in the pill — the live one if on this tab, else the tab's stored balance */
   const pillBalance =
-    user && ((tab === 'demo') === user.isVirtual)
+    user && (tab === 'demo') === user.isVirtual
       ? user.balance
       : tabAccount?.balance ?? 0;
 
@@ -103,7 +99,6 @@ export default function Layout() {
 
   const handleTabClick = (t: 'real' | 'demo') => {
     setActiveTab(t);
-    /* If we have an account of this type, switch the WebSocket to it */
     const acct = user?.accounts.find((a) => a.account_type === t);
     if (acct && acct.account_id !== user?.activeAccountId) {
       switchAccount(acct.account_id);
@@ -114,7 +109,6 @@ export default function Layout() {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-navy text-white sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
-          {/* Left: logo + desktop tabs */}
           <div className="flex items-center gap-4 lg:gap-6 min-w-0">
             <NavLink
               to="/"
@@ -143,7 +137,6 @@ export default function Layout() {
             </nav>
           </div>
 
-          {/* Right: ticker + auth */}
           <div className="flex items-center gap-2 shrink-0">
             {/* Live V100 ticker */}
             <div
@@ -162,31 +155,36 @@ export default function Layout() {
             </div>
 
             {authorized && user ? (
-              /* ============ LOGGED-IN STATE ============ */
               <div className="relative">
+                {/* ============ PILL ============ */}
                 <button
                   onClick={() => setAccountOpen((o) => !o)}
                   className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-full text-xs sm:text-sm transition"
                 >
-                  <span className="text-base">
-                    {tab === 'real' ? '🇺🇸' : '🎮'}
-                  </span>
+                  {/* Flag image — same as DerivAnalyser */}
+                  <span className="text-base leading-none">🇺🇸</span>
                   <span className="font-mono font-semibold tabular-nums">
                     {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
-                  <span className="text-white/70">
-                    {accountOpen ? '▲' : '▼'}
-                  </span>
+                  <svg
+                    viewBox="0 0 24 24"
+                    className={`w-3.5 h-3.5 transition-transform ${
+                      accountOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="currentColor"
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
                 </button>
 
+                {/* ============ DROPDOWN ============ */}
                 {accountOpen && (
                   <>
-                    {/* click-outside overlay */}
                     <div
                       className="fixed inset-0 z-[999]"
                       onClick={() => setAccountOpen(false)}
                     />
-                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl min-w-[320px] z-[1000] overflow-hidden">
+                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[340px] z-[1000] overflow-hidden">
                       {/* Real / Demo tabs */}
                       <div className="flex border-b border-gray-200">
                         {(['real', 'demo'] as const).map((t) => (
@@ -204,69 +202,86 @@ export default function Layout() {
                         ))}
                       </div>
 
-                      {/* Account row */}
-                      <div className="p-3">
-                        <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
-                          Deriv account
-                        </div>
-
-                        {tabAccount ? (
-                          <div
-                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg ${
-                              tabAccount.account_id === user.activeAccountId
-                                ? 'bg-gray-100'
-                                : 'bg-white'
+                      {/* Collapsible "Deriv accounts" section */}
+                      <div>
+                        <button
+                          onClick={() => setAccountsExpanded((x) => !x)}
+                          className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          <span>Deriv accounts</span>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className={`w-4 h-4 transition-transform ${
+                              accountsExpanded ? 'rotate-180' : ''
                             }`}
+                            fill="currentColor"
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">
-                                {tabAccount.account_type === 'real' ? '🇺🇸' : '🎮'}
-                              </span>
-                              <div>
-                                <div className="text-sm font-semibold text-navy">
-                                  {tabAccount.account_type === 'real'
-                                    ? tabAccount.currency
-                                    : 'Demo'}
+                            <path d="M7 10l5 5 5-5z" />
+                          </svg>
+                        </button>
+
+                        {accountsExpanded && (
+                          <div className="px-3 pb-3">
+                            {tabAccount ? (
+                              <div
+                                className={`w-full flex items-center justify-between px-3 py-3 rounded-lg transition ${
+                                  tabAccount.account_id ===
+                                  user.activeAccountId
+                                    ? 'bg-gray-100'
+                                    : 'hover:bg-gray-50'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  {/* US flag emoji — matches DerivAnalyser */}
+                                  <span className="text-xl leading-none">
+                                    🇺🇸
+                                  </span>
+                                  <div>
+                                    <div className="text-sm font-semibold text-navy">
+                                      {tabAccount.currency}
+                                    </div>
+                                    <div className="text-[10px] text-gray-400 font-mono">
+                                      {tabAccount.loginid ||
+                                        tabAccount.account_id}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="text-[10px] text-gray-400 font-mono">
-                                  {tabAccount.loginid || tabAccount.account_id}
+                                <div className="text-sm font-mono font-semibold text-navy">
+                                  {fmtMoney(
+                                    tabAccount.account_id ===
+                                      user.activeAccountId
+                                      ? user.balance
+                                      : tabAccount.balance
+                                  )}{' '}
+                                  {tabAccount.currency}
                                 </div>
                               </div>
-                            </div>
-                            <div className="text-sm font-mono font-semibold text-navy">
-                              {fmtMoney(
-                                tabAccount.account_id === user.activeAccountId
-                                  ? user.balance
-                                  : tabAccount.balance
-                              )}{' '}
-                              {tabAccount.currency}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center text-xs text-gray-400 py-4">
-                            No {tab} account on this profile.
-                          </div>
-                        )}
+                            ) : (
+                              <div className="text-center text-xs text-gray-400 py-4">
+                                No {tab} account on this profile.
+                              </div>
+                            )}
 
-                        {/* Demo-only "Reset balance" button */}
-                        {tab === 'demo' && tabAccount && (
-                          <button
-                            onClick={() => {
-                              alert(
-                                'To reset your demo balance, please do so from your Deriv dashboard.'
-                              );
-                            }}
-                            className="w-full mt-2 border border-gray-300 hover:bg-gray-50 rounded-lg py-2 text-xs font-medium text-gray-600"
-                          >
-                            Reset balance
-                          </button>
+                            {tab === 'demo' && tabAccount && (
+                              <button
+                                onClick={() =>
+                                  alert(
+                                    'To reset your demo balance, please visit your Deriv dashboard.'
+                                  )
+                                }
+                                className="w-full mt-2 border border-gray-300 hover:bg-gray-50 rounded-lg py-2 text-xs font-medium text-gray-600"
+                              >
+                                Reset balance
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
 
                       {/* Logout */}
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-5 py-3 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100 font-medium flex items-center justify-between"
+                        className="w-full text-left px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100 font-medium flex items-center justify-between"
                       >
                         <span>Logout</span>
                         <span className="text-gray-400">→</span>
@@ -276,7 +291,6 @@ export default function Layout() {
                 )}
               </div>
             ) : (
-              /* ============ LOGGED-OUT STATE ============ */
               <>
                 <button
                   onClick={startDerivLogin}
@@ -293,7 +307,6 @@ export default function Layout() {
               </>
             )}
 
-            {/* Hamburger */}
             <button
               onClick={() => setMobileOpen((o) => !o)}
               className="xl:hidden p-2 rounded hover:bg-white/10"
@@ -324,7 +337,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* ============ MOBILE DRAWER ============ */}
         {mobileOpen && (
           <nav className="xl:hidden border-t border-white/10 bg-navy max-h-[80vh] overflow-y-auto">
             {navItems.map((item) => {
