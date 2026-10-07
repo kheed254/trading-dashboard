@@ -89,7 +89,7 @@ export default function Layout() {
               to="/"
               className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0"
             >
-              Deriv<span className="text-brand-teal">Analyser</span>
+              Stinger<span className="text-brand-teal">FX</span>
             </NavLink>
 
             {/* Desktop nav */}
