@@ -1,5 +1,7 @@
+import { useEffect, useMemo, useState } from 'react';
 import SignalCard from '../components/SignalCard';
 import { useMultiTicks } from '../lib/deriv';
+import { useAuthWs } from '../lib/auth-ws';
 
 const signals = [
   {
@@ -76,12 +78,31 @@ const filterPills = [
 ];
 
 export default function Dashboard() {
+  const { authorized, user, error: authError } = useAuthWs();
+
   const { ticks, connected } = useMultiTicks([
     '1HZ30V',
     '1HZ25V',
     '1HZ75V',
     '1HZ10V',
   ]);
+
+  /* Debug log while we verify the auth hook — safe to remove later */
+  useEffect(() => {
+    if (authorized && user) {
+      console.log(
+        '[StingerFX] Logged in as',
+        user.loginid,
+        '— balance:',
+        user.balance,
+        user.currency,
+        user.isVirtual ? '(demo)' : '(real)'
+      );
+    }
+    if (authError) {
+      console.warn('[StingerFX] Auth error:', authError);
+    }
+  }, [authorized, user, authError]);
 
   return (
     <>
