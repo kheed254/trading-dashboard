@@ -51,6 +51,30 @@ const IconCopyTrading = () => (
   </svg>
 );
 
+/* ---------- Demo badge — circular grey-blue "D" mark ---------- */
+const DemoBadge = ({ size = 28 }: { size?: number }) => (
+  <span
+    className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0"
+    style={{ width: size, height: size }}
+  >
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#ffffff"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ width: size * 0.6, height: size * 0.6 }}
+    >
+      <path d="M7 5 L7 19" />
+      <path d="M7 5 L14 5 Q20 5 20 12 Q20 19 14 19 L7 19" />
+      <path d="M11 8 L11 16" />
+      <path d="M11 10 L15 10" />
+      <path d="M11 14 L15 14" />
+    </svg>
+  </span>
+);
+
 const navItems = [
   { label: 'Dashboard', to: '/dashboard', Icon: IconDashboard },
   { label: 'Bot Builder', to: '/bot_builder', Icon: IconBotBuilder },
@@ -138,7 +162,7 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Live V100 ticker — stays on the dark glass pill */}
+            {/* Live V100 ticker */}
             <div
               className="hidden md:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
               title="Volatility 100 (1s) Index — live"
@@ -156,19 +180,23 @@ export default function Layout() {
 
             {authorized && user ? (
               <div className="relative">
-                {/* ============ PILL — LIGHT, MATCHING DERIVANALYSER ============ */}
+                {/* ============ PILL ============ */}
                 <button
                   onClick={() => setAccountOpen((o) => !o)}
                   className="flex items-center gap-2.5 bg-white hover:bg-gray-50 px-2 py-1 rounded-full text-sm transition shadow-sm border border-gray-100"
                 >
-                  {/* Circular US flag */}
-                  <span className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
-                    <img
-                      src="https://flagcdn.com/w80/us.png"
-                      alt="USD"
-                      className="w-full h-full object-cover"
-                    />
-                  </span>
+                  {/* Flag (Real) or demo badge (Demo) */}
+                  {tab === 'real' ? (
+                    <span className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
+                      <img
+                        src="https://flagcdn.com/w80/us.png"
+                        alt="USD"
+                        className="w-full h-full object-cover"
+                      />
+                    </span>
+                  ) : (
+                    <DemoBadge size={28} />
+                  )}
                   <span className="font-mono font-bold text-brand-teal tabular-nums">
                     {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
@@ -240,16 +268,22 @@ export default function Layout() {
                                 }`}
                               >
                                 <div className="flex items-center gap-2.5">
-                                  <span className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
-                                    <img
-                                      src="https://flagcdn.com/w80/us.png"
-                                      alt="USD"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  </span>
+                                  {tabAccount.account_type === 'real' ? (
+                                    <span className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
+                                      <img
+                                        src="https://flagcdn.com/w80/us.png"
+                                        alt="USD"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    </span>
+                                  ) : (
+                                    <DemoBadge size={32} />
+                                  )}
                                   <div>
                                     <div className="text-sm font-semibold text-navy">
-                                      {tabAccount.currency}
+                                      {tabAccount.account_type === 'real'
+                                        ? tabAccount.currency
+                                        : 'Demo'}
                                     </div>
                                     <div className="text-[10px] text-gray-400 font-mono">
                                       {tabAccount.loginid ||
@@ -372,13 +406,17 @@ export default function Layout() {
             {authorized && user ? (
               <div className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full overflow-hidden border border-white/30">
-                    <img
-                      src="https://flagcdn.com/w80/us.png"
-                      alt="USD"
-                      className="w-full h-full object-cover"
-                    />
-                  </span>
+                  {user.isVirtual ? (
+                    <DemoBadge size={28} />
+                  ) : (
+                    <span className="w-7 h-7 rounded-full overflow-hidden border border-white/30">
+                      <img
+                        src="https://flagcdn.com/w80/us.png"
+                        alt="USD"
+                        className="w-full h-full object-cover"
+                      />
+                    </span>
+                  )}
                   <div>
                     <div className="text-xs text-white/60">Balance</div>
                     <div className="text-sm font-mono font-semibold">
