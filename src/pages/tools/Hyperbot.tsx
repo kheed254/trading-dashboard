@@ -4,6 +4,7 @@ import {
   computeDigitStats,
   computeOverUnder,
 } from '../../lib/digitStats';
+import { useTradeStore } from '../../lib/trading/store';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -22,7 +23,6 @@ export default function Hyperbot() {
   const [numTicks, setNumTicks] = useState(1000);
   const [threshold, setThreshold] = useState(5);
 
-  /* Digit selection: over = digits > threshold, under = digits < threshold */
   const [selectedDigits, setSelectedDigits] = useState<boolean[]>(
     Array(10).fill(false)
   );
@@ -36,6 +36,9 @@ export default function Hyperbot() {
   /* ---- Live stream ---- */
   const symbol = MARKET_MAP[marketName] as any;
   const { currentDigit, digits, connected } = useDigitStream(symbol, numTicks);
+
+  /* ---- Trade store ---- */
+  const { placeTrade } = useTradeStore();
 
   /* ---- Stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
@@ -66,7 +69,44 @@ export default function Hyperbot() {
     0
   );
 
-  const toggleAuto = () => setRunning((r) => !r);
+  const placeSelectedTrades = () => {
+    if (selectedCount === 0) {
+      alert('Select at least one digit first.');
+      return;
+    }
+    let placed = 0;
+    selectedDigits.forEach((sel, d) => {
+      if (!sel) return;
+      const s = defaultStakes ? defaultStakeValue : stakes[d];
+      const direction =
+        d < threshold
+          ? `Under ${threshold} (${d})`
+          : d > threshold
+          ? `Over ${threshold} (${d})`
+          : `Equal ${threshold}`;
+      placeTrade({
+        market: marketName,
+        symbol: MARKET_MAP[marketName],
+        type: 'over_under',
+        direction,
+        stake: s,
+        ticks: 5,
+        entryPrice: currentDigit ?? undefined,
+      });
+      placed++;
+    });
+    alert(
+      `Placed ${placed} trade${placed !== 1 ? 's' : ''}. Check Reports in a few seconds.`
+    );
+  };
+
+  const toggleAuto = () => {
+    if (!running && selectedCount === 0) {
+      alert('Select at least one digit first.');
+      return;
+    }
+    setRunning((r) => !r);
+  };
 
   return (
     <div className="mt-2">
@@ -115,7 +155,7 @@ export default function Hyperbot() {
       </div>
 
       {/* Status cards: Under / Equal / Over */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <StatCard
           label="UNDER"
           count={overUnderStats.under}
@@ -137,7 +177,7 @@ export default function Hyperbot() {
       </div>
 
       {/* Recent tick info */}
-      <div className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+      <div className="text-xs text-gray-500 mb-4 flex items-center gap-2 flex-wrap">
         <span>Recent U/U/O</span>
         <span className="ml-auto">
           <span
@@ -169,7 +209,7 @@ export default function Hyperbot() {
         <div className="text-xs font-semibold text-gray-700">
           Predictions ({selectedCount}/10 Active)
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-wrap">
           <Toggle
             label="Use Default Stakes"
             value={defaultStakes}
@@ -193,48 +233,48 @@ export default function Hyperbot() {
         </div>
       </div>
 
-      {/* Digit grid */}
-      <div className="grid grid-cols-5 md:grid-cols-10 gap-2 mb-6">
-        {digitStats.map((d) => {
-          const isSelected = selectedDigits[d.digit];
-          const isCurrent = d.digit === currentDigit;
-          const stake = defaultStakes ? defaultStakeValue : stakes[d.digit];
-          return (
-            <div key={d.digit} className="flex flex-col">
-              <div
-                className={`border rounded-md px-2 py-3 text-center transition ${
-                  isSelected
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-gray-50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggleDigit(d.digit)}
-                  className="w-4 h-4 accent-blue-600 cursor-pointer mb-1"
-                />
+      {/* Digit grid — scrollable on mobile */}
+      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-6">
+        <div className="grid grid-cols-5 md:grid-cols-10 gap-2 min-w-[640px]">
+          {digitStats.map((d) => {
+            const isSelected = selectedDigits[d.digit];
+            const isCurrent = d.digit === currentDigit;
+            const stake = defaultStakes ? defaultStakeValue : stakes[d.digit];
+            return (
+              <div key={d.digit} className="flex flex-col">
                 <div
-                  className={`text-lg font-bold ${
-                    isCurrent ? 'text-blue-600' : 'text-navy'
+                  className={`border rounded-md px-2 py-3 text-center transition ${
+                    isSelected
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 bg-gray-50'
                   }`}
                 >
-                  {d.digit}
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleDigit(d.digit)}
+                    className="w-4 h-4 accent-blue-600 cursor-pointer mb-1"
+                  />
+                  <div
+                    className={`text-lg font-bold ${
+                      isCurrent ? 'text-blue-600' : 'text-navy'
+                    }`}
+                  >
+                    {d.digit}
+                  </div>
                 </div>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={stake}
+                  onChange={(e) => setStake(d.digit, Number(e.target.value))}
+                  disabled={defaultStakes}
+                  className="mt-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-center outline-none disabled:bg-gray-100 disabled:text-gray-400"
+                />
               </div>
-              <input
-                type="number"
-                step="0.01"
-                value={stake}
-                onChange={(e) =>
-                  setStake(d.digit, Number(e.target.value))
-                }
-                disabled={defaultStakes}
-                className="mt-1 border border-gray-200 rounded-md px-2 py-1 text-xs text-center outline-none disabled:bg-gray-100 disabled:text-gray-400"
-              />
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Total stake */}
@@ -248,7 +288,10 @@ export default function Hyperbot() {
 
       {/* Action buttons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <button className="bg-purple-400 hover:bg-purple-500 text-white text-sm font-semibold py-3 rounded-md transition">
+        <button
+          onClick={placeSelectedTrades}
+          className="bg-purple-400 hover:bg-purple-500 text-white text-sm font-semibold py-3 rounded-md transition"
+        >
           TRADE ONCE
         </button>
         <button

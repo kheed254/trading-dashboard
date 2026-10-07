@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTradeStore } from '../../lib/trading/store';
 
 const MARKETS = [
   'Volatility 10 (1s) Index',
@@ -18,6 +19,15 @@ const TRADE_TYPES = [
   'Fall',
 ];
 
+const MARKET_SYMBOL: Record<string, string> = {
+  'Volatility 10 (1s) Index': '1HZ10V',
+  'Volatility 25 (1s) Index': '1HZ25V',
+  'Volatility 30 (1s) Index': '1HZ30V',
+  'Volatility 50 (1s) Index': '1HZ50V',
+  'Volatility 75 (1s) Index': '1HZ75V',
+  'Volatility 100 (1s) Index': '1HZ100V',
+};
+
 export default function SpeedBot() {
   const [market, setMarket] = useState('Volatility 100 (1s) Index');
   const [tradeType, setTradeType] = useState('Digits Over');
@@ -30,10 +40,56 @@ export default function SpeedBot() {
   const [martingale, setMartingale] = useState(1.0);
   const [running, setRunning] = useState(false);
 
-  const toggleStart = () => setRunning((r) => !r);
+  const { placeTrade } = useTradeStore();
+
+  const placeTradeOnce = () => {
+    const direction =
+      tradeType === 'Digits Over'
+        ? `Over ${predictionBefore}`
+        : tradeType === 'Digits Under'
+        ? `Under ${predictionBefore}`
+        : tradeType === 'Digits Even'
+        ? 'Even'
+        : tradeType === 'Digits Odd'
+        ? 'Odd'
+        : tradeType === 'Rise'
+        ? 'Rise'
+        : 'Fall';
+
+    const t: 'rise_fall' | 'even_odd' | 'over_under' | 'digits' =
+      tradeType === 'Rise' || tradeType === 'Fall'
+        ? 'rise_fall'
+        : tradeType === 'Digits Even' || tradeType === 'Digits Odd'
+        ? 'even_odd'
+        : tradeType === 'Digits Over' || tradeType === 'Digits Under'
+        ? 'over_under'
+        : 'digits';
+
+    placeTrade({
+      market,
+      symbol: MARKET_SYMBOL[market] ?? '1HZ100V',
+      type: t,
+      direction,
+      stake,
+      ticks,
+    });
+
+    alert(
+      `Trade placed: ${direction} on ${market}\nStake: $${stake.toFixed(
+        2
+      )}\nCheck Reports in a few seconds.`
+    );
+  };
+
+  const toggleStart = () => {
+    if (!running) {
+      placeTradeOnce();
+    }
+    setRunning((r) => !r);
+  };
 
   return (
-    <div className="bg-[#0d1b3d] rounded-xl p-10 text-white">
+    <div className="bg-[#0d1b3d] rounded-xl p-6 sm:p-10 text-white">
       {/* Title */}
       <div className="text-center mb-8">
         <h1 className="text-2xl font-semibold text-white">SpeedBot</h1>
@@ -143,14 +199,15 @@ export default function SpeedBot() {
         <div className="flex flex-wrap justify-between items-center gap-4 text-xs text-white/70 border-t border-white/10 pt-4 mb-6">
           <span>Total Profit/Loss: 0.00</span>
           <span>Last Digit: -</span>
-          <span>
-            Consecutive Wins: 0 Consecutive Losses: 0
-          </span>
+          <span>Consecutive Wins: 0 Consecutive Losses: 0</span>
         </div>
 
         {/* Buttons */}
-        <div className="flex justify-center gap-3">
-          <button className="bg-teal-500/70 hover:bg-teal-500 text-white text-sm font-semibold px-6 py-2.5 rounded-md transition">
+        <div className="flex flex-wrap justify-center gap-3">
+          <button
+            onClick={placeTradeOnce}
+            className="bg-teal-500/70 hover:bg-teal-500 text-white text-sm font-semibold px-6 py-2.5 rounded-md transition"
+          >
             Trade once
           </button>
           <button

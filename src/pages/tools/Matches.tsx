@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDigitStream } from '../../lib/deriv';
 import { computeDigitStats, mostFrequent } from '../../lib/digitStats';
+import { useTradeStore } from '../../lib/trading/store';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -28,20 +29,35 @@ export default function Matches() {
     analysisCount
   );
 
+  /* ---- Trade store ---- */
+  const { placeTrade } = useTradeStore();
+
   /* ---- Stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const most = digits.length >= 5 ? mostFrequent(digitStats) : null;
 
-  /* ---- Actions (fake for now) ---- */
+  /* ---- Actions ---- */
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<number[]>([]);
 
   const placeContracts = () => {
     setPlacing(true);
     setTimeout(() => {
+      const direction = `Matches ${selectedDigit}`;
+      for (let i = 0; i < numContracts; i++) {
+        placeTrade({
+          market: marketName,
+          symbol: MARKET_MAP[marketName],
+          type: 'matches_differs',
+          direction,
+          stake: stakePerContract,
+          ticks: 5,
+          entryPrice: price ?? undefined,
+        });
+      }
       setPlaced((p) => [...p, Date.now()]);
       setPlacing(false);
-    }, 500);
+    }, 400);
   };
 
   const usePredictedDigit = () => {
@@ -141,7 +157,6 @@ export default function Matches() {
             </Field>
           </div>
 
-          {/* Use predicted */}
           <button
             onClick={usePredictedDigit}
             disabled={most === null}
@@ -150,7 +165,6 @@ export default function Matches() {
             Use Predicted Digit ({most !== null ? most : '—'})
           </button>
 
-          {/* Place contract */}
           <button
             onClick={placeContracts}
             disabled={placing}
@@ -163,7 +177,6 @@ export default function Matches() {
                 } - Matches Digit ${selectedDigit}`}
           </button>
 
-          {/* Recent placements */}
           {placed.length > 0 && (
             <div className="text-xs text-gray-400 pt-2 border-t border-gray-100">
               {placed.length} placement{placed.length !== 1 ? 's' : ''} this
@@ -171,7 +184,6 @@ export default function Matches() {
             </div>
           )}
 
-          {/* Connection status */}
           <div className="text-xs text-gray-400 flex items-center gap-2 pt-2">
             <span
               className={`w-2 h-2 rounded-full ${
@@ -182,9 +194,7 @@ export default function Matches() {
               ? `Live · ${digits.length}/${analysisCount} ticks collected`
               : 'Connecting…'}
             {price !== null && (
-              <span className="ml-auto font-mono">
-                {price.toFixed(2)}
-              </span>
+              <span className="ml-auto font-mono">{price.toFixed(2)}</span>
             )}
           </div>
         </div>
