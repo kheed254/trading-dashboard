@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTradeStore } from '../lib/trading/store';
 
 type Period = 'today' | '7d' | '30d' | 'all';
 
@@ -9,30 +10,32 @@ const PERIODS: { id: Period; label: string }[] = [
   { id: 'all', label: 'All Time' },
 ];
 
-/* Placeholder trade — will be replaced by real trades later */
-type Trade = {
-  id: string;
-  market: string;
-  type: string;
-  stake: number;
-  payout: number;
-  profit: number;
-  closed: string;
-};
-
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState<'trades' | 'statement'>('trades');
+  const [activeTab, setActiveTab] = useState<'trades' | 'statement'>(
+    'trades'
+  );
   const [period, setPeriod] = useState<Period>('7d');
-  const [trades] = useState<Trade[]>([]); // empty for now
+  const { trades: allTrades, clearAll } = useTradeStore();
+
+  /* Only closed trades appear in the reports table */
+  const trades = allTrades
+    .filter((t) => t.status !== 'open')
+    .sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0));
 
   /* Derived stats */
-  const totalPL = trades.reduce((s, t) => s + t.profit, 0);
-  const wins = trades.filter((t) => t.profit > 0).length;
-  const losses = trades.filter((t) => t.profit < 0).length;
+  const totalPL = trades.reduce((s, t) => s + (t.profit ?? 0), 0);
+  const wins = trades.filter((t) => t.status === 'won').length;
+  const losses = trades.filter((t) => t.status === 'lost').length;
   const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
   const totalStake = trades.reduce((s, t) => s + t.stake, 0);
-  const best = trades.length > 0 ? Math.max(...trades.map((t) => t.profit)) : 0;
-  const worst = trades.length > 0 ? Math.min(...trades.map((t) => t.profit)) : 0;
+  const best =
+    trades.length > 0
+      ? Math.max(...trades.map((t) => t.profit ?? 0))
+      : 0;
+  const worst =
+    trades.length > 0
+      ? Math.min(...trades.map((t) => t.profit ?? 0))
+      : 0;
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
@@ -77,8 +80,18 @@ export default function Reports() {
                 {p.label}
               </button>
             ))}
-            <button className="ml-auto px-4 py-1.5 text-xs font-medium bg-white border border-gray-300 rounded-md text-gray-600 hover:bg-gray-100">
-              Refresh
+            <button
+              onClick={() => {
+                if (
+                  trades.length === 0 ||
+                  confirm('Clear all trade history?')
+                ) {
+                  clearAll();
+                }
+              }}
+              className="ml-auto px-4 py-1.5 text-xs font-medium bg-white border border-red-300 text-red-600 rounded-md hover:bg-red-50"
+            >
+              Clear All
             </button>
           </div>
 
@@ -87,7 +100,9 @@ export default function Reports() {
             <StatBox
               label="Total P/L"
               value={`${totalPL.toFixed(2)} USD`}
-              highlight={totalPL > 0 ? 'green' : totalPL < 0 ? 'red' : 'none'}
+              highlight={
+                totalPL > 0 ? 'green' : totalPL < 0 ? 'red' : 'none'
+              }
             />
             <StatBox
               label="Win Rate"
@@ -130,9 +145,8 @@ export default function Reports() {
 
           {/* Trade table */}
           <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-            {/* Header */}
-            <div className="bg-navy text-white text-xs font-semibold">
-              <div className="grid grid-cols-6 gap-2 px-4 py-3">
+            <div className="bg-navy text-white text-xs font-semibold overflow-x-auto">
+              <div className="grid grid-cols-6 gap-2 px-4 py-3 min-w-[640px]">
                 <div>Market</div>
                 <div>Type</div>
                 <div className="text-right">Stake</div>
@@ -142,45 +156,57 @@ export default function Reports() {
               </div>
             </div>
 
-            {/* Body */}
             {trades.length === 0 ? (
               <div className="text-center text-sm text-gray-400 py-16">
-                No closed trades in this period.
+                No closed trades in this period. Place a trade from the{' '}
+                <span className="font-semibold text-navy">
+                  Manual Trader
+                </span>{' '}
+                to see it here.
               </div>
             ) : (
-              <div className="divide-y divide-gray-100">
-                {trades.map((t) => (
-                  <div
-                    key={t.id}
-                    className="grid grid-cols-6 gap-2 px-4 py-3 text-sm hover:bg-gray-50"
-                  >
-                    <div className="font-medium text-navy">{t.market}</div>
-                    <div className="text-gray-600">{t.type}</div>
-                    <div className="text-right font-mono">
-                      {t.stake.toFixed(2)}
-                    </div>
-                    <div className="text-right font-mono">
-                      {t.payout.toFixed(2)}
-                    </div>
+              <div className="divide-y divide-gray-100 overflow-x-auto">
+                <div className="min-w-[640px]">
+                  {trades.map((t) => (
                     <div
-                      className={`text-right font-mono font-semibold ${
-                        t.profit >= 0 ? 'text-green-600' : 'text-red-600'
-                      }`}
+                      key={t.id}
+                      className="grid grid-cols-6 gap-2 px-4 py-3 text-sm hover:bg-gray-50"
                     >
-                      {t.profit >= 0 ? '+' : ''}
-                      {t.profit.toFixed(2)}
+                      <div className="font-medium text-navy truncate">
+                        {t.market}
+                      </div>
+                      <div className="text-gray-600">
+                        {t.type.replace('_', ' ')} · {t.direction}
+                      </div>
+                      <div className="text-right font-mono">
+                        {t.stake.toFixed(2)}
+                      </div>
+                      <div className="text-right font-mono">
+                        {t.status === 'won' ? t.payout.toFixed(2) : '0.00'}
+                      </div>
+                      <div
+                        className={`text-right font-mono font-semibold ${
+                          (t.profit ?? 0) >= 0
+                            ? 'text-green-600'
+                            : 'text-red-600'
+                        }`}
+                      >
+                        {(t.profit ?? 0) >= 0 ? '+' : ''}
+                        {(t.profit ?? 0).toFixed(2)}
+                      </div>
+                      <div className="text-right text-gray-500">
+                        {t.closedAt
+                          ? new Date(t.closedAt).toLocaleTimeString()
+                          : '—'}
+                      </div>
                     </div>
-                    <div className="text-right text-gray-500">
-                      {t.closed}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
           </div>
         </>
       ) : (
-        /* Statement tab */
         <div className="bg-white border border-gray-200 rounded-lg p-12 text-center text-sm text-gray-400">
           Statement history coming soon.
         </div>
@@ -223,9 +249,7 @@ function StatBox({
       : 'text-navy';
 
   return (
-    <div
-      className={`border border-gray-200 rounded-lg p-4 ${bg}`}
-    >
+    <div className={`border border-gray-200 rounded-lg p-4 ${bg}`}>
       <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium mb-2">
         {label}
       </div>

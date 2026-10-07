@@ -6,6 +6,7 @@ import {
   type ISeriesApi,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { useTradeStore } from '../lib/trading/store';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -39,6 +40,8 @@ export default function ManualTrader() {
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
   const [showTypePicker, setShowTypePicker] = useState(false);
+
+  const { placeTrade } = useTradeStore();
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -102,7 +105,7 @@ export default function ManualTrader() {
     ws.onopen = () => {
       setConnected(true);
       const end = Math.floor(Date.now() / 1000);
-      const start = end - 60 * 300; // last 300 minutes
+      const start = end - 60 * 300;
 
       ws.send(
         JSON.stringify({
@@ -122,7 +125,6 @@ export default function ManualTrader() {
       try {
         const data = JSON.parse(event.data);
 
-        /* Historical prices */
         if (data.msg_type === 'history' && data.history) {
           const times: number[] = data.history.times;
           const prices: number[] = data.history.prices;
@@ -137,7 +139,6 @@ export default function ManualTrader() {
           chartRef.current?.timeScale().fitContent();
         }
 
-        /* Live tick */
         if (data.msg_type === 'tick' && data.tick) {
           const p = Number(data.tick.quote);
           setLastPrice(p);
@@ -168,15 +169,31 @@ export default function ManualTrader() {
   }, [symbol]);
 
   const handleBuy = () => {
-    alert(
-      `Place buy: ${tradeType} on ${marketName}\nStake: $${stake.toFixed(2)}\nGrowth: ${growthRate}%\n(Real trades coming soon)`
-    );
+    const id = placeTrade({
+      market: marketName,
+      symbol: MARKET_MAP[marketName],
+      type: 'rise_fall',
+      direction: 'Rise',
+      stake,
+      ticks: 5,
+      entryPrice: lastPrice ?? undefined,
+    });
+
+    if (id) {
+      alert(
+        `Trade placed!\n${marketName}\nStake: $${stake.toFixed(
+          2
+        )} → Potential payout: $${(stake * 1.95).toFixed(
+          2
+        )}\nCheck Reports in a few seconds.`
+      );
+    }
   };
 
   return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-56px)] overflow-hidden">
       {/* ============ CHART (left) ============ */}
-      <div className="flex-1 flex flex-col bg-white relative">
+      <div className="flex-1 flex flex-col bg-white relative min-h-[400px]">
         {/* Market dropdown overlay */}
         <div className="absolute top-4 left-4 z-10 bg-white border border-gray-200 rounded-lg shadow-sm px-4 py-3 flex items-center gap-3">
           <div>
@@ -210,14 +227,12 @@ export default function ManualTrader() {
       </div>
 
       {/* ============ TRADE TICKET (right) ============ */}
-      <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-y-auto">
+      <aside className="w-full md:w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col overflow-y-auto">
         <div className="p-4">
-          {/* Learn about link */}
           <div className="text-xs text-blue-600 underline mb-3 cursor-pointer">
             Learn about this trade type
           </div>
 
-          {/* Trade type header */}
           <button
             onClick={() => setShowTypePicker(true)}
             className="w-full flex items-center gap-2 px-3 py-3 bg-gray-50 border border-gray-200 rounded-md mb-4 hover:bg-gray-100 transition"
@@ -234,7 +249,6 @@ export default function ManualTrader() {
             </span>
           </button>
 
-          {/* Growth rate */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-gray-600">Growth rate</span>
@@ -256,7 +270,6 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          {/* Stake */}
           <div className="mb-4">
             <div className="text-sm text-gray-600 mb-2">Stake</div>
             <div className="flex items-center gap-2">
@@ -284,7 +297,6 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          {/* Take profit */}
           <label className="flex items-center gap-2 mb-4 text-sm text-gray-700 cursor-pointer">
             <input
               type="checkbox"
@@ -295,7 +307,6 @@ export default function ManualTrader() {
             Take profit
           </label>
 
-          {/* Payout info */}
           <div className="grid grid-cols-2 gap-3 text-xs mb-4 py-3 border-t border-b border-gray-100">
             <div>
               <div className="text-gray-500">Max. payout</div>
@@ -309,7 +320,6 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          {/* Buy button */}
           <button
             onClick={handleBuy}
             className="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-4 rounded-md flex items-center justify-center gap-3 transition"
@@ -338,7 +348,7 @@ export default function ManualTrader() {
                 className="w-full mt-3 border border-gray-200 rounded-md px-3 py-2 text-sm outline-none"
               />
             </div>
-            <div className="grid grid-cols-3">
+            <div className="grid grid-cols-1 md:grid-cols-3">
               {/* Left column: categories */}
               <div className="border-r border-gray-100 py-2">
                 {[
@@ -362,7 +372,7 @@ export default function ManualTrader() {
               </div>
 
               {/* Right: cards */}
-              <div className="col-span-2 p-4 space-y-3">
+              <div className="md:col-span-2 p-4 space-y-3">
                 <div className="text-xs text-gray-500">
                   Learn more about trade types ›
                 </div>
