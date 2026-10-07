@@ -42,7 +42,7 @@ const FEATURES = [
   {
     Icon: IconBolt,
     title: 'Live market data',
-    desc: 'Real-time ticks, digit distributions, and probabilities streamed straight from Deriv\'s API.',
+    desc: "Real-time ticks, digit distributions, and probabilities streamed straight from Deriv's API.",
     color: 'text-amber-500 bg-amber-50',
   },
   {
@@ -66,7 +66,7 @@ const FEATURES = [
   {
     Icon: IconShield,
     title: 'Secure OAuth',
-    desc: 'Log in through Deriv\'s official OAuth — we never see or store your password.',
+    desc: "Log in through Deriv's official OAuth — we never see or store your password.",
     color: 'text-green-500 bg-green-50',
   },
   {
@@ -104,7 +104,7 @@ export default function Landing() {
 
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
                 Trade smarter with{' '}
-                <span className="text-brand-teal">DerivAnalyser</span>
+                <span className="text-brand-teal">StingerFX</span>
               </h1>
 
               <p className="text-lg text-white/80 leading-relaxed mb-8 max-w-xl">
@@ -177,10 +177,7 @@ export default function Landing() {
                       { l: 'Even', v: '47.6%', c: 'text-green-600' },
                       { l: 'Odd', v: '52.4%', c: 'text-red-600' },
                     ].map((s) => (
-                      <div
-                        key={s.l}
-                        className="bg-gray-50 rounded-lg py-2"
-                      >
+                      <div key={s.l} className="bg-gray-50 rounded-lg py-2">
                         <div className="text-[10px] text-gray-500 uppercase">
                           {s.l}
                         </div>
@@ -288,7 +285,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
           <div>
             <div className="text-white font-bold text-base mb-3">
-              Deriv<span className="text-brand-teal">Analyser</span>
+              Stinger<span className="text-brand-teal">FX</span>
             </div>
             <p className="text-xs leading-relaxed">
               A third-party trading platform built on Deriv&apos;s public
@@ -299,36 +296,80 @@ export default function Landing() {
           <div>
             <div className="text-white font-semibold mb-3">Platform</div>
             <ul className="space-y-2 text-xs">
-              <li><Link to="/dashboard" className="hover:text-white">Dashboard</Link></li>
-              <li><Link to="/bot_builder" className="hover:text-white">Bot Builder</Link></li>
-              <li><Link to="/charts" className="hover:text-white">Charts</Link></li>
-              <li><Link to="/analysis_tool" className="hover:text-white">Analysis Tool</Link></li>
+              <li>
+                <Link to="/dashboard" className="hover:text-white">
+                  Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link to="/bot_builder" className="hover:text-white">
+                  Bot Builder
+                </Link>
+              </li>
+              <li>
+                <Link to="/charts" className="hover:text-white">
+                  Charts
+                </Link>
+              </li>
+              <li>
+                <Link to="/analysis_tool" className="hover:text-white">
+                  Analysis Tool
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div>
             <div className="text-white font-semibold mb-3">Tools</div>
             <ul className="space-y-2 text-xs">
-              <li><Link to="/trading_bots" className="hover:text-white">Trading Bots</Link></li>
-              <li><Link to="/bulk_trader" className="hover:text-white">Bulk Trader</Link></li>
-              <li><Link to="/manual_trader" className="hover:text-white">Manual Trader</Link></li>
-              <li><Link to="/copy_trading" className="hover:text-white">Copy Trading</Link></li>
+              <li>
+                <Link to="/trading_bots" className="hover:text-white">
+                  Trading Bots
+                </Link>
+              </li>
+              <li>
+                <Link to="/bulk_trader" className="hover:text-white">
+                  Bulk Trader
+                </Link>
+              </li>
+              <li>
+                <Link to="/manual_trader" className="hover:text-white">
+                  Manual Trader
+                </Link>
+              </li>
+              <li>
+                <Link to="/copy_trading" className="hover:text-white">
+                  Copy Trading
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div>
             <div className="text-white font-semibold mb-3">Legal</div>
             <ul className="space-y-2 text-xs">
-              <li><span className="cursor-pointer hover:text-white">Terms</span></li>
-              <li><span className="cursor-pointer hover:text-white">Privacy</span></li>
-              <li><span className="cursor-pointer hover:text-white">Risk Disclaimer</span></li>
+              <li>
+                <span className="cursor-pointer hover:text-white">Terms</span>
+              </li>
+              <li>
+                <span className="cursor-pointer hover:text-white">
+                  Privacy
+                </span>
+              </li>
+              <li>
+                <span className="cursor-pointer hover:text-white">
+                  Risk Disclaimer
+                </span>
+              </li>
             </ul>
           </div>
         </div>
 
         <div className="border-t border-white/10">
           <div className="max-w-7xl mx-auto px-6 py-4 text-xs flex flex-wrap justify-between gap-2">
-            <span>© {new Date().getFullYear()} DerivAnalyser. All rights reserved.</span>
+            <span>
+              © {new Date().getFullYear()} StingerFX. All rights reserved.
+            </span>
             <span className="text-amber-400">
               ⚠ Trading involves risk. Trade responsibly.
             </span>
