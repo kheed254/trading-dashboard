@@ -8,7 +8,7 @@ export const DERIV_OAUTH_URL = 'https://auth.deriv.com/oauth2/auth';
 
 /** Where Deriv sends the user back after they authorize. */
 export function getRedirectUri(): string {
-  return window.location.origin + window.location.pathname;
+  return window.location.origin + '/';
 }
 
 /* ---------- PKCE helpers ---------- */
@@ -74,5 +74,96 @@ export function stripAuthParamsFromUrl() {
       document.title,
       window.location.pathname + window.location.hash
     );
+  }
+}
+
+/* ---------- Exchange code for token ---------- */
+
+export type TokenResult =
+  | { ok: true; access_token: string; expires_in: number; token_type: string }
+  | { ok: false; error: string };
+
+/**
+ * After OAuth redirects back with ?code=..., call this to exchange
+ * the code for an access token via our own /api/token endpoint.
+ */
+export async function exchangeCodeForToken(): Promise<TokenResult | null> {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const returnedState = params.get('state');
+
+  if (!code) return null; // nothing to exchange
+
+  /* Validate the CSRF state */
+  const savedState = sessionStorage.getItem('oauth_state');
+  if (!savedState || savedState !== returnedState) {
+    return { ok: false, error: 'State mismatch — try logging in again.' };
+  }
+
+  const codeVerifier = sessionStorage.getItem('pkce_code_verifier');
+  if (!codeVerifier) {
+    return {
+      ok: false,
+      error: 'Missing PKCE verifier — try logging in again.',
+    };
+  }
+
+  try {
+    const res = await fetch('/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: window.location.origin + '/',
+        client_id: DERIV_APP_ID,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      return { ok: false, error: data.error || 'Token exchange failed' };
+    }
+
+    /* Success — clean up one-time values and the URL */
+    sessionStorage.removeItem('pkce_code_verifier');
+    sessionStorage.removeItem('oauth_state');
+    window.history.replaceState({}, document.title, window.location.pathname);
+
+    return {
+      ok: true,
+      access_token: data.access_token,
+      expires_in: data.expires_in,
+      token_type: data.token_type,
+    };
+  } catch (err: any) {
+    return { ok: false, error: err.message || 'Network error' };
+  }
+}
+
+/* ---------- Token storage helpers ---------- */
+
+export function saveAccessToken(token: string) {
+  try {
+    sessionStorage.setItem('sfx_access_token', token);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getAccessToken(): string | null {
+  try {
+    return sessionStorage.getItem('sfx_access_token');
+  } catch {
+    return null;
+  }
+}
+
+export function clearAccessToken() {
+  try {
+    sessionStorage.removeItem('sfx_access_token');
+  } catch {
+    /* ignore */
   }
 }

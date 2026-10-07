@@ -1,5 +1,10 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { startDerivLogin } from '../lib/auth';
+import {
+  startDerivLogin,
+  exchangeCodeForToken,
+  saveAccessToken,
+} from '../lib/auth';
 
 /* ---------- Inline SVG icons ---------- */
 const IconBolt = () => (
@@ -85,6 +90,34 @@ const STATS = [
 ];
 
 export default function Landing() {
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authErr, setAuthErr] = useState<string | null>(null);
+  const [authOk, setAuthOk] = useState(false);
+
+  /* On page load — if Deriv redirected back with ?code=..., exchange it */
+  useEffect(() => {
+    /* Show a hint that we're processing */
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('code')) setAuthBusy(true);
+
+    exchangeCodeForToken().then((result) => {
+      if (!result) return; // no code in URL, nothing to do
+
+      if (result.ok) {
+        saveAccessToken(result.access_token);
+        setAuthBusy(false);
+        setAuthOk(true);
+        /* Give the user a moment to see the success state, then go to dashboard */
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 1000);
+      } else {
+        setAuthBusy(false);
+        setAuthErr(result.error);
+      }
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-white">
       {/* ============ HERO ============ */}
@@ -102,6 +135,24 @@ export default function Landing() {
                 Live trading platform
               </div>
 
+              {/* Auth status banners */}
+              {authBusy && (
+                <div className="inline-flex items-center gap-2 bg-teal-500/20 border border-teal-400/40 rounded-full px-4 py-2 text-sm mb-4 mr-3">
+                  <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+                  Completing login…
+                </div>
+              )}
+              {authOk && (
+                <div className="inline-flex items-center gap-2 bg-green-500/20 border border-green-400/40 rounded-full px-4 py-2 text-sm mb-4 mr-3">
+                  ✓ Logged in — taking you to the dashboard…
+                </div>
+              )}
+              {authErr && (
+                <div className="bg-red-500/20 border border-red-400/40 rounded-lg px-4 py-3 text-sm mb-4 max-w-xl">
+                  ⚠️ {authErr}
+                </div>
+              )}
+
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
                 Trade smarter with{' '}
                 <span className="text-brand-teal">StingerFX</span>
@@ -116,7 +167,8 @@ export default function Landing() {
               <div className="flex flex-wrap gap-3">
                 <button
                   onClick={startDerivLogin}
-                  className="bg-brand-teal hover:bg-teal-600 text-white font-semibold px-6 py-3 rounded-lg transition shadow-lg shadow-teal-500/30"
+                  disabled={authBusy}
+                  className="bg-brand-teal hover:bg-teal-600 disabled:opacity-60 text-white font-semibold px-6 py-3 rounded-lg transition shadow-lg shadow-teal-500/30"
                 >
                   Get started — it&apos;s free
                 </button>
@@ -266,7 +318,8 @@ export default function Landing() {
           <div className="flex flex-wrap gap-3 justify-center">
             <button
               onClick={startDerivLogin}
-              className="bg-brand-teal hover:bg-teal-600 text-white font-semibold px-8 py-3 rounded-lg transition shadow-lg shadow-teal-500/30"
+              disabled={authBusy}
+              className="bg-brand-teal hover:bg-teal-600 disabled:opacity-60 text-white font-semibold px-8 py-3 rounded-lg transition shadow-lg shadow-teal-500/30"
             >
               Log in with Deriv
             </button>
