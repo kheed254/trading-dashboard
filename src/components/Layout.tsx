@@ -63,17 +63,51 @@ const navItems = [
   { label: 'Copy Trading', to: '/copy_trading', Icon: IconCopyTrading },
 ];
 
+function fmtMoney(n: number): string {
+  return n.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'real' | 'demo' | null>(null);
   const location = useLocation();
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
   const { authorized, user, switchAccount } = useAuthWs();
 
+  /* Determine the currently active tab based on which account is live */
+  const tab: 'real' | 'demo' =
+    activeTab ?? (user?.isVirtual ? 'demo' : 'real');
+
+  /* Find the account that matches the active tab */
+  const tabAccount = user?.accounts.find(
+    (a) => a.account_type === tab
+  );
+
+  /* Balance to show in the pill — the live one if on this tab, else the tab's stored balance */
+  const pillBalance =
+    user && ((tab === 'demo') === user.isVirtual)
+      ? user.balance
+      : tabAccount?.balance ?? 0;
+
+  const pillCurrency = tabAccount?.currency || user?.currency || 'USD';
+
   const handleLogout = () => {
     clearAccessToken();
     window.location.href = '/';
+  };
+
+  const handleTabClick = (t: 'real' | 'demo') => {
+    setActiveTab(t);
+    /* If we have an account of this type, switch the WebSocket to it */
+    const acct = user?.accounts.find((a) => a.account_type === t);
+    if (acct && acct.account_id !== user?.activeAccountId) {
+      switchAccount(acct.account_id);
+    }
   };
 
   return (
@@ -134,13 +168,11 @@ export default function Layout() {
                   onClick={() => setAccountOpen((o) => !o)}
                   className="flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur px-3 py-1.5 rounded-full text-xs sm:text-sm transition"
                 >
-                  <span className="text-base">🇺🇸</span>
+                  <span className="text-base">
+                    {tab === 'real' ? '🇺🇸' : '🎮'}
+                  </span>
                   <span className="font-mono font-semibold tabular-nums">
-                    {user.balance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{' '}
-                    {user.currency}
+                    {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
                   <span className="text-white/70">
                     {accountOpen ? '▲' : '▼'}
@@ -154,78 +186,90 @@ export default function Layout() {
                       className="fixed inset-0 z-[999]"
                       onClick={() => setAccountOpen(false)}
                     />
-                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl min-w-[280px] z-[1000] overflow-hidden">
-                      {/* Real / Demo switcher */}
+                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl min-w-[320px] z-[1000] overflow-hidden">
+                      {/* Real / Demo tabs */}
                       <div className="flex border-b border-gray-200">
-                        {(['real', 'demo'] as const).map((t) => {
-                          const active =
-                            (t === 'demo') === user.isVirtual;
-                          return (
-                            <button
-                              key={t}
-                              className={`flex-1 py-3 text-sm font-medium ${
-                                active
-                                  ? 'border-b-2 border-red-500 text-navy font-semibold'
-                                  : 'text-gray-500 hover:bg-gray-50'
-                              }`}
-                            >
-                              {t === 'real' ? 'Real' : 'Demo'}
-                            </button>
-                          );
-                        })}
+                        {(['real', 'demo'] as const).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => handleTabClick(t)}
+                            className={`flex-1 py-3 text-sm font-medium transition ${
+                              tab === t
+                                ? 'border-b-2 border-red-500 text-navy font-semibold'
+                                : 'text-gray-500 hover:bg-gray-50'
+                            }`}
+                          >
+                            {t === 'real' ? 'Real' : 'Demo'}
+                          </button>
+                        ))}
                       </div>
 
-                      {/* Account list */}
+                      {/* Account row */}
                       <div className="p-3">
                         <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">
-                          Deriv accounts
+                          Deriv account
                         </div>
-                        {user.accounts.map((a) => {
-                          const isActive = a.account_id === user.activeAccountId;
-                          return (
-                            <button
-                              key={a.account_id}
-                              onClick={() => {
-                                if (!isActive) switchAccount(a.account_id);
-                                setAccountOpen(false);
-                              }}
-                              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg mb-1 text-left transition ${
-                                isActive
-                                  ? 'bg-gray-100'
-                                  : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <span className="text-lg">
-                                  {a.account_type === 'real' ? '🇺🇸' : '🎮'}
-                                </span>
-                                <div>
-                                  <div className="text-sm font-semibold text-navy">
-                                    {a.currency}
-                                  </div>
-                                  <div className="text-[10px] text-gray-400 font-mono">
-                                    {a.loginid || a.account_id}
-                                  </div>
+
+                        {tabAccount ? (
+                          <div
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg ${
+                              tabAccount.account_id === user.activeAccountId
+                                ? 'bg-gray-100'
+                                : 'bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">
+                                {tabAccount.account_type === 'real' ? '🇺🇸' : '🎮'}
+                              </span>
+                              <div>
+                                <div className="text-sm font-semibold text-navy">
+                                  {tabAccount.account_type === 'real'
+                                    ? tabAccount.currency
+                                    : 'Demo'}
+                                </div>
+                                <div className="text-[10px] text-gray-400 font-mono">
+                                  {tabAccount.loginid || tabAccount.account_id}
                                 </div>
                               </div>
-                              <div className="text-sm font-mono font-semibold text-navy">
-                                {a.balance.toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}{' '}
-                                {a.currency}
-                              </div>
-                            </button>
-                          );
-                        })}
+                            </div>
+                            <div className="text-sm font-mono font-semibold text-navy">
+                              {fmtMoney(
+                                tabAccount.account_id === user.activeAccountId
+                                  ? user.balance
+                                  : tabAccount.balance
+                              )}{' '}
+                              {tabAccount.currency}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center text-xs text-gray-400 py-4">
+                            No {tab} account on this profile.
+                          </div>
+                        )}
+
+                        {/* Demo-only "Reset balance" button */}
+                        {tab === 'demo' && tabAccount && (
+                          <button
+                            onClick={() => {
+                              alert(
+                                'To reset your demo balance, please do so from your Deriv dashboard.'
+                              );
+                            }}
+                            className="w-full mt-2 border border-gray-300 hover:bg-gray-50 rounded-lg py-2 text-xs font-medium text-gray-600"
+                          >
+                            Reset balance
+                          </button>
+                        )}
                       </div>
 
                       {/* Logout */}
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-5 py-3 text-sm text-red-600 hover:bg-red-50 border-t border-gray-100 font-medium"
+                        className="w-full text-left px-5 py-3 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100 font-medium flex items-center justify-between"
                       >
-                        Logout →
+                        <span>Logout</span>
+                        <span className="text-gray-400">→</span>
                       </button>
                     </div>
                   </>
@@ -249,7 +293,7 @@ export default function Layout() {
               </>
             )}
 
-            {/* Hamburger — visible below xl */}
+            {/* Hamburger */}
             <button
               onClick={() => setMobileOpen((o) => !o)}
               className="xl:hidden p-2 rounded hover:bg-white/10"
@@ -307,7 +351,7 @@ export default function Layout() {
                 <div>
                   <div className="text-xs text-white/60">Balance</div>
                   <div className="text-sm font-mono font-semibold">
-                    {user.balance.toFixed(2)} {user.currency}
+                    {fmtMoney(user.balance)} {user.currency}
                   </div>
                 </div>
                 <button
