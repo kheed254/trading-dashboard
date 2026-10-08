@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../../lib/deriv';
 import { computeDigitStats, mostFrequent } from '../../lib/digitStats';
 import { useTradeStore } from '../../lib/trading/store';
+import { useAuthWs } from '../../lib/auth-ws';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -19,7 +20,7 @@ export default function Matches() {
   const [marketName, setMarketName] = useState('Volatility 100 (1s) Index');
   const [selectedDigit, setSelectedDigit] = useState(5);
   const [numContracts, setNumContracts] = useState(1);
-  const [stakePerContract, setStakePerContract] = useState(0.5);
+  const [stakePerContract, setStakePerContract] = useState(0.35);
   const [analysisCount, setAnalysisCount] = useState(100);
 
   /* ---- Live stream ---- */
@@ -29,12 +30,37 @@ export default function Matches() {
     analysisCount
   );
 
-  /* ---- Trade store ---- */
-  const { placeTrade } = useTradeStore();
+  /* ---- Stores ---- */
+  const { placeTrade: placePaperTrade } = useTradeStore();
+  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
 
   /* ---- Stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const most = digits.length >= 5 ? mostFrequent(digitStats) : null;
+
+  /* ---- Local P/L tracking ---- */
+  const [matchPL, setMatchPL] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [matchTrades, setMatchTrades] = useState(0);
+
+  const myContractsRef = useRef<Set<number>>(new Set());
+
+  /* Watch settled contracts */
+  useEffect(() => {
+    openTrades.forEach((t) => {
+      if (!myContractsRef.current.has(t.contract_id)) return;
+      if (!t.is_sold) return;
+      myContractsRef.current.delete(t.contract_id);
+
+      const won = t.profit > 0;
+      setMatchPL((prev) => +(prev + t.profit).toFixed(2));
+      setMatchTrades((prev) => prev + 1);
+      if (won) setWins((w) => w + 1);
+      else setLosses((l) => l + 1);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades]);
 
   /* ---- Actions ---- */
   const [placing, setPlacing] = useState(false);
@@ -42,22 +68,64 @@ export default function Matches() {
 
   const placeContracts = () => {
     setPlacing(true);
-    setTimeout(() => {
-      const direction = `Matches ${selectedDigit}`;
-      for (let i = 0; i < numContracts; i++) {
-        placeTrade({
-          market: marketName,
-          symbol: MARKET_MAP[marketName],
-          type: 'matches_differs',
-          direction,
+
+    for (let i = 0; i < numContracts; i++) {
+      if (authorized) {
+        /* Real Deriv trade */
+        const snapshot = new Set(openTrades.map((t) => t.contract_id));
+
+        placeRealTrade({
+          symbol,
+          contractType: 'DIGITMATCH',
           stake: stakePerContract,
-          ticks: 5,
+          duration: 1,
+          durationUnit: 't',
+          barrier: String(selectedDigit),
+        });
+
+        console.log('[Matches] Real trade fired:', {
+          symbol,
+          contractType: 'DIGITMATCH',
+          stake: stakePerContract,
+          barrier: String(selectedDigit),
+        });
+
+        let cancelled = false;
+        const poll = setInterval(() => {
+          if (cancelled) return;
+          openTrades.forEach((t) => {
+            if (
+              !snapshot.has(t.contract_id) &&
+              !myContractsRef.current.has(t.contract_id)
+            ) {
+              myContractsRef.current.add(t.contract_id);
+              console.log(
+                '[Matches] Registered contract',
+                t.contract_id
+              );
+            }
+          });
+        }, 200);
+        setTimeout(() => {
+          cancelled = true;
+          clearInterval(poll);
+        }, 5000);
+      } else {
+        /* Paper fallback */
+        placePaperTrade({
+          market: marketName,
+          symbol,
+          type: 'matches_differs',
+          direction: `Matches ${selectedDigit}`,
+          stake: stakePerContract,
+          ticks: 1,
           entryPrice: price ?? undefined,
         });
       }
-      setPlaced((p) => [...p, Date.now()]);
-      setPlacing(false);
-    }, 400);
+    }
+
+    setPlaced((p) => [...p, Date.now()]);
+    setTimeout(() => setPlacing(false), 500);
   };
 
   const usePredictedDigit = () => {
@@ -66,7 +134,7 @@ export default function Matches() {
 
   return (
     <div className="mt-2">
-      {/* Banner — teal gradient for Matches */}
+      {/* Banner — teal for Matches */}
       <div className="bg-gradient-to-r from-teal-500 via-emerald-500 to-green-500 text-white rounded-lg px-6 py-8 text-center shadow-md mb-6">
         <h1 className="text-2xl font-semibold">
           Matches - Digits Market Trading
@@ -176,6 +244,33 @@ export default function Matches() {
                   numContracts !== 1 ? 's' : ''
                 } - Matches Digit ${selectedDigit}`}
           </button>
+
+          {/* Live P/L */}
+          {matchTrades > 0 && (
+            <div className="flex justify-between items-center text-xs text-gray-600 border-t border-gray-100 pt-3">
+              <span>
+                Total P/L:{' '}
+                <span
+                  className={`font-mono font-semibold ${
+                    matchPL > 0
+                      ? 'text-green-600'
+                      : matchPL < 0
+                      ? 'text-red-600'
+                      : 'text-gray-600'
+                  }`}
+                >
+                  {matchPL >= 0 ? '+' : ''}
+                  {matchPL.toFixed(2)}
+                </span>
+              </span>
+              <span>
+                Wins:{' '}
+                <span className="text-green-600 font-semibold">{wins}</span> ·
+                Losses:{' '}
+                <span className="text-red-600 font-semibold">{losses}</span>
+              </span>
+            </div>
+          )}
 
           {placed.length > 0 && (
             <div className="text-xs text-gray-400 pt-2 border-t border-gray-100">
