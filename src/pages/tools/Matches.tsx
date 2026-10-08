@@ -70,12 +70,16 @@ export default function Matches() {
   const [autoRunning, setAutoRunning] = useState(false);
   const autoRunningRef = useRef(false);
 
+  /* ---- Risk management ---- */
+  const [stopLoss, setStopLoss] = useState(5);
+  const [takeProfit, setTakeProfit] = useState(5);
+  const stoppedReasonRef = useRef<string | null>(null);
+
   const placeContracts = () => {
     setPlacing(true);
 
     for (let i = 0; i < numContracts; i++) {
       if (authorized) {
-        /* Real Deriv trade */
         const snapshot = new Set(openTrades.map((t) => t.contract_id));
 
         placeRealTrade({
@@ -103,10 +107,7 @@ export default function Matches() {
               !myContractsRef.current.has(t.contract_id)
             ) {
               myContractsRef.current.add(t.contract_id);
-              console.log(
-                '[Matches] Registered contract',
-                t.contract_id
-              );
+              console.log('[Matches] Registered contract', t.contract_id);
             }
           });
         }, 200);
@@ -115,7 +116,6 @@ export default function Matches() {
           clearInterval(poll);
         }, 5000);
       } else {
-        /* Paper fallback */
         placePaperTrade({
           market: marketName,
           symbol,
@@ -141,7 +141,6 @@ export default function Matches() {
     autoRunningRef.current = autoRunning;
     if (!autoRunning) return;
 
-    /* Fire immediately on start */
     placeContracts();
 
     const interval = setInterval(() => {
@@ -159,6 +158,30 @@ export default function Matches() {
     numContracts,
     stakePerContract,
   ]);
+
+  /* ---- Auto-stop on SL/TP ---- */
+  useEffect(() => {
+    if (!autoRunning) return;
+    if (stoppedReasonRef.current) return;
+
+    if (takeProfit > 0 && matchPL >= takeProfit) {
+      stoppedReasonRef.current = 'TP';
+      setAutoRunning(false);
+      console.log(
+        `[Matches] Take-profit hit (${matchPL.toFixed(
+          2
+        )} >= ${takeProfit}) — stopped`
+      );
+    } else if (stopLoss > 0 && matchPL <= -stopLoss) {
+      stoppedReasonRef.current = 'SL';
+      setAutoRunning(false);
+      console.log(
+        `[Matches] Stop-loss hit (${matchPL.toFixed(
+          2
+        )} <= -${stopLoss}) — stopped`
+      );
+    }
+  }, [matchPL, autoRunning, stopLoss, takeProfit]);
 
   return (
     <div className="mt-2">
@@ -239,6 +262,32 @@ export default function Matches() {
             />
           </Field>
 
+          {/* Risk management row */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Stop Loss ($)">
+              <input
+                type="number"
+                step="0.5"
+                min={0}
+                value={stopLoss}
+                onChange={(e) => setStopLoss(Number(e.target.value))}
+                className="form-input"
+                placeholder="0 = off"
+              />
+            </Field>
+            <Field label="Take Profit ($)">
+              <input
+                type="number"
+                step="0.5"
+                min={0}
+                value={takeProfit}
+                onChange={(e) => setTakeProfit(Number(e.target.value))}
+                className="form-input"
+                placeholder="0 = off"
+              />
+            </Field>
+          </div>
+
           {/* Live displays */}
           <div className="grid grid-cols-2 gap-4 pt-2">
             <Field label="Current Digit">
@@ -275,7 +324,12 @@ export default function Matches() {
 
           {/* Auto-trading toggle */}
           <button
-            onClick={() => setAutoRunning((r) => !r)}
+            onClick={() =>
+              setAutoRunning((r) => {
+                if (!r) stoppedReasonRef.current = null;
+                return !r;
+              })
+            }
             className={`w-full ${
               autoRunning
                 ? 'bg-red-500 hover:bg-red-600 animate-pulse'
@@ -322,6 +376,18 @@ export default function Matches() {
           {autoRunning && (
             <div className="text-center text-[11px] text-teal-600 border-t border-gray-100 pt-2">
               ● Auto trading active — new trade every 6 seconds
+            </div>
+          )}
+
+          {stoppedReasonRef.current === 'TP' && !autoRunning && (
+            <div className="text-center text-[11px] text-green-600 border-t border-gray-100 pt-2">
+              🎯 Auto stopped — Take Profit hit
+            </div>
+          )}
+
+          {stoppedReasonRef.current === 'SL' && !autoRunning && (
+            <div className="text-center text-[11px] text-red-600 border-t border-gray-100 pt-2">
+              🛑 Auto stopped — Stop Loss hit
             </div>
           )}
 
