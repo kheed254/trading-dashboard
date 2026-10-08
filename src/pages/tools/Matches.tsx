@@ -66,6 +66,10 @@ export default function Matches() {
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<number[]>([]);
 
+  /* ---- Auto-trading loop ---- */
+  const [autoRunning, setAutoRunning] = useState(false);
+  const autoRunningRef = useRef(false);
+
   const placeContracts = () => {
     setPlacing(true);
 
@@ -131,6 +135,30 @@ export default function Matches() {
   const usePredictedDigit = () => {
     if (most !== null) setSelectedDigit(most);
   };
+
+  /* Auto-fire loop — runs placeContracts every 6 seconds */
+  useEffect(() => {
+    autoRunningRef.current = autoRunning;
+    if (!autoRunning) return;
+
+    /* Fire immediately on start */
+    placeContracts();
+
+    const interval = setInterval(() => {
+      if (!autoRunningRef.current) return;
+      placeContracts();
+    }, 6000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autoRunning,
+    authorized,
+    marketName,
+    selectedDigit,
+    numContracts,
+    stakePerContract,
+  ]);
 
   return (
     <div className="mt-2">
@@ -245,6 +273,25 @@ export default function Matches() {
                 } - Matches Digit ${selectedDigit}`}
           </button>
 
+          {/* Auto-trading toggle */}
+          <button
+            onClick={() => setAutoRunning((r) => !r)}
+            className={`w-full ${
+              autoRunning
+                ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                : 'bg-green-500 hover:bg-green-600'
+            } text-white text-sm font-semibold py-2.5 rounded-md transition flex items-center justify-center gap-2`}
+          >
+            {autoRunning ? (
+              <>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                Stop auto trading — every 6s
+              </>
+            ) : (
+              '▶ Start auto trading'
+            )}
+          </button>
+
           {/* Live P/L */}
           {matchTrades > 0 && (
             <div className="flex justify-between items-center text-xs text-gray-600 border-t border-gray-100 pt-3">
@@ -269,6 +316,12 @@ export default function Matches() {
                 Losses:{' '}
                 <span className="text-red-600 font-semibold">{losses}</span>
               </span>
+            </div>
+          )}
+
+          {autoRunning && (
+            <div className="text-center text-[11px] text-teal-600 border-t border-gray-100 pt-2">
+              ● Auto trading active — new trade every 6 seconds
             </div>
           )}
 
