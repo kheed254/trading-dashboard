@@ -35,6 +35,11 @@ export default function Hyperbot() {
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
 
+  /* ---- Risk management ---- */
+  const [stopLoss, setStopLoss] = useState(5);
+  const [takeProfit, setTakeProfit] = useState(5);
+  const stoppedReasonRef = useRef<string | null>(null);
+
   /* ---- Live stream ---- */
   const symbol = MARKET_MAP[marketName] as any;
   const { currentDigit, digits, connected } = useDigitStream(symbol, numTicks);
@@ -183,7 +188,10 @@ export default function Hyperbot() {
       alert('Select at least one digit first.');
       return;
     }
-    setRunning((r) => !r);
+    setRunning((r) => {
+      if (!r) stoppedReasonRef.current = null;
+      return !r;
+    });
   };
 
   /* Auto-fire loop — runs placeSelectedTrades every 6 seconds */
@@ -209,6 +217,30 @@ export default function Hyperbot() {
     selectedDigits,
   ]);
 
+  /* ---- Auto-stop on SL/TP ---- */
+  useEffect(() => {
+    if (!running) return;
+    if (stoppedReasonRef.current) return;
+
+    if (takeProfit > 0 && hyperPL >= takeProfit) {
+      stoppedReasonRef.current = 'TP';
+      setRunning(false);
+      console.log(
+        `[Hyperbot] Take-profit hit (${hyperPL.toFixed(
+          2
+        )} >= ${takeProfit}) — stopped`
+      );
+    } else if (stopLoss > 0 && hyperPL <= -stopLoss) {
+      stoppedReasonRef.current = 'SL';
+      setRunning(false);
+      console.log(
+        `[Hyperbot] Stop-loss hit (${hyperPL.toFixed(
+          2
+        )} <= -${stopLoss}) — stopped`
+      );
+    }
+  }, [hyperPL, running, stopLoss, takeProfit]);
+
   return (
     <div className="mt-2">
       {/* Title */}
@@ -217,7 +249,7 @@ export default function Hyperbot() {
       </h1>
 
       {/* Top row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
         <input
           value={marketName}
           onChange={(e) => setMarketName(e.target.value)}
@@ -253,6 +285,38 @@ export default function Hyperbot() {
         <button className="bg-purple-500 hover:bg-purple-600 text-white text-sm font-semibold rounded-md">
           Apply
         </button>
+      </div>
+
+      {/* Risk management row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+            Stop Loss ($)
+          </label>
+          <input
+            type="number"
+            step="0.5"
+            min={0}
+            value={stopLoss}
+            onChange={(e) => setStopLoss(Number(e.target.value))}
+            className="input"
+            placeholder="0 = off"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">
+            Take Profit ($)
+          </label>
+          <input
+            type="number"
+            step="0.5"
+            min={0}
+            value={takeProfit}
+            onChange={(e) => setTakeProfit(Number(e.target.value))}
+            className="input"
+            placeholder="0 = off"
+          />
+        </div>
       </div>
 
       {/* Status cards */}
@@ -391,6 +455,18 @@ export default function Hyperbot() {
       {running && (
         <div className="text-center text-[11px] text-green-600 mb-3">
           ● Auto trading active — new trade every 6 seconds
+        </div>
+      )}
+
+      {stoppedReasonRef.current === 'TP' && !running && (
+        <div className="text-center text-[11px] text-green-600 mb-3">
+          🎯 Auto stopped — Take Profit hit
+        </div>
+      )}
+
+      {stoppedReasonRef.current === 'SL' && !running && (
+        <div className="text-center text-[11px] text-red-600 mb-3">
+          🛑 Auto stopped — Stop Loss hit
         </div>
       )}
 
