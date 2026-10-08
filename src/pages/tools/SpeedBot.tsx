@@ -42,6 +42,9 @@ export default function SpeedBot() {
   const [martingale, setMartingale] = useState(1.0);
   const [running, setRunning] = useState(false);
 
+  const runningRef = useRef(false);
+  const lastFiredAtRef = useRef(0);
+
   /* Live market tick (for Last Digit) */
   const symbol = MARKET_SYMBOL[market] ?? '1HZ100V';
   const { price: livePrice } = useTicks(symbol as any);
@@ -65,8 +68,6 @@ export default function SpeedBot() {
     openTrades.forEach((t) => {
       if (!myContractsRef.current.has(t.contract_id)) return;
       if (!t.is_sold) return;
-
-      /* Already counted? Remove from set so we don't double-count */
       myContractsRef.current.delete(t.contract_id);
 
       const won = t.profit > 0;
@@ -92,7 +93,6 @@ export default function SpeedBot() {
       : null;
 
   const placeTradeOnce = () => {
-    /* Map trade type → Deriv contract type + optional barrier */
     let contractType = 'CALL';
     let barrier: string | undefined;
     if (tradeType === 'Digits Over') {
@@ -124,7 +124,6 @@ export default function SpeedBot() {
         ? 'Rise'
         : 'Fall';
 
-    /* If logged in → real Deriv trade */
     if (authorized) {
       placeRealTrade({
         symbol,
@@ -134,7 +133,7 @@ export default function SpeedBot() {
         durationUnit: 't',
         barrier,
       });
-      console.log('[SpeedBot] Real trade:', {
+      console.log('[SpeedBot] Real trade fired:', {
         symbol,
         contractType,
         stake,
@@ -142,7 +141,6 @@ export default function SpeedBot() {
         barrier,
       });
 
-      /* Track the newest open trade as ours (after a beat) */
       setTimeout(() => {
         const newest = openTrades.find((t) => !t.is_sold);
         if (newest) myContractsRef.current.add(newest.contract_id);
@@ -150,7 +148,6 @@ export default function SpeedBot() {
       return;
     }
 
-    /* Fallback → paper trade */
     const t: 'rise_fall' | 'even_odd' | 'over_under' | 'digits' =
       tradeType === 'Rise' || tradeType === 'Fall'
         ? 'rise_fall'
@@ -168,14 +165,29 @@ export default function SpeedBot() {
       stake,
       ticks,
     });
-
-    alert(`Paper trade placed (not logged in): ${dirLabel}`);
   };
 
-  const toggleStart = () => {
-    if (!running) {
+  /* ---- Auto-fire loop ---- */
+  useEffect(() => {
+    runningRef.current = running;
+    if (!running) return;
+
+    /* Fire immediately on start */
+    placeTradeOnce();
+    lastFiredAtRef.current = Date.now();
+
+    /* Then keep firing every ~6 seconds */
+    const interval = setInterval(() => {
+      if (!runningRef.current) return;
       placeTradeOnce();
-    }
+      lastFiredAtRef.current = Date.now();
+    }, 6000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, authorized, market, tradeType, stake, ticks, predictionBefore]);
+
+  const toggleStart = () => {
     setRunning((r) => !r);
   };
 
@@ -286,7 +298,7 @@ export default function SpeedBot() {
           </Field>
         </div>
 
-        {/* Live status row — now wired to real data */}
+        {/* Live status row */}
         <div className="flex flex-wrap justify-between items-center gap-4 text-xs text-white/70 border-t border-white/10 pt-4 mb-6">
           <span>
             Total Profit/Loss:{' '}
@@ -321,11 +333,13 @@ export default function SpeedBot() {
         {speedTrades > 0 && (
           <div className="flex justify-between items-center text-xs text-white/60 border-t border-white/10 pt-3 mb-4">
             <span>
-              Trades: <span className="text-white font-semibold">{speedTrades}</span>
+              Trades:{' '}
+              <span className="text-white font-semibold">{speedTrades}</span>
             </span>
             <span>
-              Wins: <span className="text-green-400 font-semibold">{wins}</span>{' '}
-              · Losses:{' '}
+              Wins:{' '}
+              <span className="text-green-400 font-semibold">{wins}</span> ·
+              Losses:{' '}
               <span className="text-red-400 font-semibold">{losses}</span>
             </span>
           </div>
@@ -343,13 +357,27 @@ export default function SpeedBot() {
             onClick={toggleStart}
             className={`${
               running
-                ? 'bg-red-500/80 hover:bg-red-500'
+                ? 'bg-red-500/80 hover:bg-red-500 animate-pulse'
                 : 'bg-green-600/70 hover:bg-green-600'
-            } text-white text-sm font-semibold px-6 py-2.5 rounded-md transition`}
+            } text-white text-sm font-semibold px-6 py-2.5 rounded-md transition flex items-center gap-2`}
           >
-            {running ? 'Stop auto trading' : 'Start auto trading'}
+            {running ? (
+              <>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                Auto trading — every 6s
+              </>
+            ) : (
+              'Start auto trading'
+            )}
           </button>
         </div>
+
+        {/* Running indicator */}
+        {running && (
+          <div className="text-center text-[11px] text-teal-300 mt-3">
+            ● Auto trading active — new trade every 6 seconds
+          </div>
+        )}
       </div>
 
       {/* Local styles */}
