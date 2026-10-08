@@ -33,6 +33,7 @@ export default function Hyperbot() {
   const [entryPoint, setEntryPoint] = useState(false);
 
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
 
   /* ---- Live stream ---- */
   const symbol = MARKET_MAP[marketName] as any;
@@ -97,7 +98,6 @@ export default function Hyperbot() {
 
   const placeSelectedTrades = () => {
     if (selectedCount === 0) {
-      alert('Select at least one digit first.');
       return;
     }
 
@@ -106,7 +106,6 @@ export default function Hyperbot() {
       if (!sel) return;
       const s = defaultStakes ? defaultStakeValue : stakes[d];
 
-      /* Map digit d + threshold → contract type + barrier */
       let contractType = 'DIGITOVER';
       let barrier: string | undefined;
       if (d < threshold) {
@@ -116,12 +115,10 @@ export default function Hyperbot() {
         contractType = 'DIGITOVER';
         barrier = String(threshold);
       } else {
-        /* Equal to threshold — skip */
         return;
       }
 
       if (authorized) {
-        /* Real Deriv trade */
         const snapshot = new Set(openTrades.map((t) => t.contract_id));
 
         placeRealTrade({
@@ -141,7 +138,6 @@ export default function Hyperbot() {
           digit: d,
         });
 
-        /* Poll for new contract id */
         let cancelled = false;
         const poll = setInterval(() => {
           if (cancelled) return;
@@ -163,7 +159,6 @@ export default function Hyperbot() {
           clearInterval(poll);
         }, 5000);
       } else {
-        /* Paper fallback */
         placePaperTrade({
           market: marketName,
           symbol,
@@ -190,6 +185,29 @@ export default function Hyperbot() {
     }
     setRunning((r) => !r);
   };
+
+  /* Auto-fire loop — runs placeSelectedTrades every 6 seconds */
+  useEffect(() => {
+    runningRef.current = running;
+    if (!running) return;
+
+    placeSelectedTrades();
+
+    const interval = setInterval(() => {
+      if (!runningRef.current) return;
+      placeSelectedTrades();
+    }, 6000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    running,
+    authorized,
+    marketName,
+    threshold,
+    defaultStakeValue,
+    selectedDigits,
+  ]);
 
   return (
     <div className="mt-2">
@@ -237,7 +255,7 @@ export default function Hyperbot() {
         </button>
       </div>
 
-      {/* Status cards: Under / Equal / Over */}
+      {/* Status cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
         <StatCard
           label="UNDER"
@@ -316,7 +334,7 @@ export default function Hyperbot() {
         </div>
       </div>
 
-      {/* Digit grid — scrollable on mobile */}
+      {/* Digit grid */}
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-6">
         <div className="grid grid-cols-5 md:grid-cols-10 gap-2 min-w-[640px]">
           {digitStats.map((d) => {
@@ -369,6 +387,13 @@ export default function Hyperbot() {
         equal to threshold cannot be selected.
       </div>
 
+      {/* Auto trading indicator */}
+      {running && (
+        <div className="text-center text-[11px] text-green-600 mb-3">
+          ● Auto trading active — new trade every 6 seconds
+        </div>
+      )}
+
       {/* Live P/L */}
       {hyperTrades > 0 && (
         <div className="max-w-md mx-auto flex justify-between items-center text-xs text-gray-700 border-t border-gray-200 pt-3 mb-4">
@@ -407,11 +432,18 @@ export default function Hyperbot() {
           onClick={toggleAuto}
           className={`${
             running
-              ? 'bg-red-500 hover:bg-red-600'
+              ? 'bg-red-500 hover:bg-red-600 animate-pulse'
               : 'bg-green-500 hover:bg-green-600'
-          } text-white text-sm font-semibold py-3 rounded-md transition`}
+          } text-white text-sm font-semibold py-3 rounded-md transition flex items-center justify-center gap-2`}
         >
-          {running ? 'STOP AUTO TRADING' : 'START AUTO TRADING'}
+          {running ? (
+            <>
+              <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              STOP AUTO TRADING — every 6s
+            </>
+          ) : (
+            'START AUTO TRADING'
+          )}
         </button>
       </div>
 
