@@ -52,6 +52,11 @@ export default function Diffbot() {
   const [autoRunning, setAutoRunning] = useState(false);
   const autoRunningRef = useRef(false);
 
+  /* ---- Risk management ---- */
+  const [stopLoss, setStopLoss] = useState(5);
+  const [takeProfit, setTakeProfit] = useState(5);
+  const stoppedReasonRef = useRef<string | null>(null);
+
   /* Contracts belonging to this Diffbot */
   const myContractsRef = useRef<Set<number>>(new Set());
 
@@ -145,7 +150,6 @@ export default function Diffbot() {
     autoRunningRef.current = autoRunning;
     if (!autoRunning) return;
 
-    /* Fire immediately on start */
     placeContracts();
 
     const interval = setInterval(() => {
@@ -163,6 +167,30 @@ export default function Diffbot() {
     numContracts,
     stakePerContract,
   ]);
+
+  /* ---- Auto-stop on SL/TP ---- */
+  useEffect(() => {
+    if (!autoRunning) return;
+    if (stoppedReasonRef.current) return;
+
+    if (takeProfit > 0 && diffPL >= takeProfit) {
+      stoppedReasonRef.current = 'TP';
+      setAutoRunning(false);
+      console.log(
+        `[Diffbot] Take-profit hit (${diffPL.toFixed(
+          2
+        )} >= ${takeProfit}) — stopped`
+      );
+    } else if (stopLoss > 0 && diffPL <= -stopLoss) {
+      stoppedReasonRef.current = 'SL';
+      setAutoRunning(false);
+      console.log(
+        `[Diffbot] Stop-loss hit (${diffPL.toFixed(
+          2
+        )} <= -${stopLoss}) — stopped`
+      );
+    }
+  }, [diffPL, autoRunning, stopLoss, takeProfit]);
 
   return (
     <div className="mt-2">
@@ -243,6 +271,32 @@ export default function Diffbot() {
             />
           </Field>
 
+          {/* Risk management row */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Stop Loss ($)">
+              <input
+                type="number"
+                step="0.5"
+                min={0}
+                value={stopLoss}
+                onChange={(e) => setStopLoss(Number(e.target.value))}
+                className="form-input"
+                placeholder="0 = off"
+              />
+            </Field>
+            <Field label="Take Profit ($)">
+              <input
+                type="number"
+                step="0.5"
+                min={0}
+                value={takeProfit}
+                onChange={(e) => setTakeProfit(Number(e.target.value))}
+                className="form-input"
+                placeholder="0 = off"
+              />
+            </Field>
+          </div>
+
           {/* Live displays */}
           <div className="grid grid-cols-2 gap-4 pt-2">
             <Field label="Current Digit">
@@ -279,7 +333,12 @@ export default function Diffbot() {
 
           {/* Auto-trading toggle */}
           <button
-            onClick={() => setAutoRunning((r) => !r)}
+            onClick={() =>
+              setAutoRunning((r) => {
+                if (!r) stoppedReasonRef.current = null;
+                return !r;
+              })
+            }
             className={`w-full ${
               autoRunning
                 ? 'bg-red-500 hover:bg-red-600 animate-pulse'
@@ -326,6 +385,18 @@ export default function Diffbot() {
           {autoRunning && (
             <div className="text-center text-[11px] text-teal-600 border-t border-gray-100 pt-2">
               ● Auto trading active — new trade every 6 seconds
+            </div>
+          )}
+
+          {stoppedReasonRef.current === 'TP' && !autoRunning && (
+            <div className="text-center text-[11px] text-green-600 border-t border-gray-100 pt-2">
+              🎯 Auto stopped — Take Profit hit
+            </div>
+          )}
+
+          {stoppedReasonRef.current === 'SL' && !autoRunning && (
+            <div className="text-center text-[11px] text-red-600 border-t border-gray-100 pt-2">
+              🛑 Auto stopped — Stop Loss hit
             </div>
           )}
 
