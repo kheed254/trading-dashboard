@@ -200,6 +200,10 @@ export default function BotBuilder() {
     pl: 0,
   });
 
+  /* ---- Martingale tracking ---- */
+  const [currentStake, setCurrentStake] = useState<number | null>(null);
+  const consecutiveLossesRef = useRef(0);
+
   const [botJournal, setBotJournal] = useState<
     { time: string; text: string; kind: string }[]
   >([]);
@@ -233,12 +237,15 @@ export default function BotBuilder() {
     botRunningRef.current = botRunning;
   }, [botRunning]);
 
-  /* Watch for closed contracts */
+  /* Watch closed contracts */
   useEffect(() => {
     if (!openTrades.length) return;
     openTrades.forEach((t) => {
       if (t.is_sold && t.contract_id === activeContractId) {
         const won = t.profit > 0;
+        const baseStake = getBaseStake();
+        const martLevel = getMartingaleLevel();
+
         setBotStats((prev) => ({
           runs: prev.runs,
           wins: won ? prev.wins + 1 : prev.wins,
@@ -249,15 +256,33 @@ export default function BotBuilder() {
             : prev.totalPayout,
           pl: +(prev.pl + t.profit).toFixed(2),
         }));
-        addJournal(
-          `${won ? 'Won +$' : 'Lost -$'}${Math.abs(t.profit).toFixed(
-            2
-          )} — contract #${t.contract_id}`,
-          won ? 'profit' : 'loss'
-        );
+
+        /* Martingale */
+        if (won) {
+          consecutiveLossesRef.current = 0;
+          setCurrentStake(baseStake);
+          addJournal(
+            `✓ Won +$${t.profit.toFixed(2)} — stake reset to $${baseStake.toFixed(
+              2
+            )}`,
+            'profit'
+          );
+        } else {
+          consecutiveLossesRef.current += 1;
+          const nextStake = +(t.buy_price * martLevel).toFixed(2);
+          setCurrentStake(nextStake);
+          addJournal(
+            `✗ Lost -$${Math.abs(t.profit).toFixed(
+              2
+            )} — Martingale lvl ${
+              consecutiveLossesRef.current
+            }, next $${nextStake.toFixed(2)}`,
+            'loss'
+          );
+        }
+
         setActiveContractId(null);
 
-        /* Stop-loss check */
         const sl = getStopLoss();
         setBotStats((prev) => {
           if (sl > 0 && sl < 900 && prev.pl <= -sl) {
@@ -283,7 +308,14 @@ export default function BotBuilder() {
     return isNaN(val) ? 0 : val;
   };
 
-  const getStake = (): number => {
+  const getMartingaleLevel = (): number => {
+    const tp = getTradeParams();
+    const raw = tp?.runOnceValues?.['Martingale Level'];
+    const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+    return isNaN(val) || val <= 1 ? 1 : val;
+  };
+
+  const getBaseStake = (): number => {
     const tp = getTradeParams();
     const raw = tp?.runOnceValues?.['Initial Amount'];
     const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
@@ -352,6 +384,8 @@ export default function BotBuilder() {
     });
     setBotJournal([]);
     setActiveContractId(null);
+    consecutiveLossesRef.current = 0;
+    setCurrentStake(null);
   };
 
   const placeOneTrade = () => {
@@ -372,10 +406,16 @@ export default function BotBuilder() {
     const durType = tp?.durationType || 'Ticks';
     const durVal = tp?.durationValue ?? 1;
     const { duration, durationUnit } = resolveDuration(durType, durVal);
-    const stake = getStake();
+
+    const baseStake = getBaseStake();
+    const stake = currentStake ?? baseStake;
 
     addJournal(
-      `Placing ${contractType} on ${symbol} — $${stake.toFixed(2)}`,
+      `Placing ${contractType} on ${symbol} — $${stake.toFixed(2)}${
+        consecutiveLossesRef.current > 0
+          ? ` (Martingale lvl ${consecutiveLossesRef.current})`
+          : ''
+      }`,
       'buy'
     );
 
@@ -421,6 +461,11 @@ export default function BotBuilder() {
       return;
     }
     const next = !botRunning;
+    if (next) {
+      /* Starting fresh — reset Martingale state */
+      consecutiveLossesRef.current = 0;
+      setCurrentStake(getBaseStake());
+    }
     setBotRunning(next);
     addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
   };
@@ -559,7 +604,7 @@ export default function BotBuilder() {
             onClick={toggleRun}
             className={`${
               botRunning
-                ? 'bg-teal-500 hover:bg-teal-600'
+                ? 'bg-red-500 hover:bg-red-600'
                 : 'bg-teal-500 hover:bg-teal-600'
             } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0 flex items-center gap-1.5`}
           >
@@ -719,6 +764,15 @@ export default function BotBuilder() {
                           </div>
                         </div>
                       </div>
+
+                      {/* Martingale status */}
+                      {consecutiveLossesRef.current > 0 && (
+                        <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2">
+                          Martingale level {consecutiveLossesRef.current} —
+                          next stake $
+                          {currentStake?.toFixed(2) ?? '—'}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -728,7 +782,6 @@ export default function BotBuilder() {
           {/* ========== TRANSACTIONS ========== */}
           {detailTab === 'transactions' && (
             <div>
-              {/* Buttons */}
               <div className="flex gap-2 px-3 py-2 border-b border-gray-100">
                 <button
                   disabled
@@ -744,14 +797,12 @@ export default function BotBuilder() {
                 </button>
               </div>
 
-              {/* Header */}
               <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 py-2 text-[10px] text-gray-500 font-medium border-b border-gray-100">
                 <div>Type</div>
                 <div>Entry/Exit spot</div>
                 <div className="text-right">Buy price and P/L</div>
               </div>
 
-              {/* Rows */}
               {openTrades.length === 0 ? (
                 <div className="text-center text-gray-400 text-xs py-10">
                   No transactions yet
@@ -767,7 +818,6 @@ export default function BotBuilder() {
                         className="border-b border-gray-100 py-2"
                       >
                         <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center">
-                          {/* Type + icon */}
                           <div className="flex items-center gap-1.5">
                             <span className="text-base leading-none">
                               {t.contract_type.includes('DIGIT')
@@ -782,7 +832,6 @@ export default function BotBuilder() {
                             </span>
                           </div>
 
-                          {/* Entry spot */}
                           <div className="flex items-center gap-1.5 text-[11px]">
                             <span className="text-red-500 text-base leading-none">
                               ○
@@ -792,13 +841,11 @@ export default function BotBuilder() {
                             </span>
                           </div>
 
-                          {/* Buy price */}
                           <div className="text-right text-[11px] font-mono text-gray-700">
                             {t.buy_price.toFixed(2)} USD
                           </div>
                         </div>
 
-                        {/* Second row: exit spot + P/L */}
                         <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center mt-1">
                           <div />
                           <div className="flex items-center gap-1.5 text-[11px]">
