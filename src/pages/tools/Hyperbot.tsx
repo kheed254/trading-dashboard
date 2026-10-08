@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../../lib/deriv';
 import {
   computeDigitStats,
   computeOverUnder,
 } from '../../lib/digitStats';
 import { useTradeStore } from '../../lib/trading/store';
+import { useAuthWs } from '../../lib/auth-ws';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -27,8 +28,8 @@ export default function Hyperbot() {
     Array(10).fill(false)
   );
   const [defaultStakes, setDefaultStakes] = useState(true);
-  const [defaultStakeValue, setDefaultStakeValue] = useState(0.5);
-  const [stakes, setStakes] = useState<number[]>(Array(10).fill(0.5));
+  const [defaultStakeValue, setDefaultStakeValue] = useState(0.35);
+  const [stakes, setStakes] = useState<number[]>(Array(10).fill(0.35));
   const [entryPoint, setEntryPoint] = useState(false);
 
   const [running, setRunning] = useState(false);
@@ -37,8 +38,9 @@ export default function Hyperbot() {
   const symbol = MARKET_MAP[marketName] as any;
   const { currentDigit, digits, connected } = useDigitStream(symbol, numTicks);
 
-  /* ---- Trade store ---- */
-  const { placeTrade } = useTradeStore();
+  /* ---- Stores ---- */
+  const { placeTrade: placePaperTrade } = useTradeStore();
+  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
 
   /* ---- Stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
@@ -46,6 +48,30 @@ export default function Hyperbot() {
     () => computeOverUnder(digits, threshold),
     [digits, threshold]
   );
+
+  /* ---- Local P/L tracking ---- */
+  const [hyperPL, setHyperPL] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [hyperTrades, setHyperTrades] = useState(0);
+
+  const myContractsRef = useRef<Set<number>>(new Set());
+
+  /* Watch for settled contracts */
+  useEffect(() => {
+    openTrades.forEach((t) => {
+      if (!myContractsRef.current.has(t.contract_id)) return;
+      if (!t.is_sold) return;
+      myContractsRef.current.delete(t.contract_id);
+
+      const won = t.profit > 0;
+      setHyperPL((prev) => +(prev + t.profit).toFixed(2));
+      setHyperTrades((prev) => prev + 1);
+      if (won) setWins((w) => w + 1);
+      else setLosses((l) => l + 1);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades]);
 
   const toggleDigit = (d: number) => {
     setSelectedDigits((prev) => {
@@ -74,30 +100,87 @@ export default function Hyperbot() {
       alert('Select at least one digit first.');
       return;
     }
+
     let placed = 0;
     selectedDigits.forEach((sel, d) => {
       if (!sel) return;
       const s = defaultStakes ? defaultStakeValue : stakes[d];
-      const direction =
-        d < threshold
-          ? `Under ${threshold} (${d})`
-          : d > threshold
-          ? `Over ${threshold} (${d})`
-          : `Equal ${threshold}`;
-      placeTrade({
-        market: marketName,
-        symbol: MARKET_MAP[marketName],
-        type: 'over_under',
-        direction,
-        stake: s,
-        ticks: 5,
-        entryPrice: currentDigit ?? undefined,
-      });
+
+      /* Map digit d + threshold → contract type + barrier */
+      let contractType = 'DIGITOVER';
+      let barrier: string | undefined;
+      if (d < threshold) {
+        contractType = 'DIGITUNDER';
+        barrier = String(threshold);
+      } else if (d > threshold) {
+        contractType = 'DIGITOVER';
+        barrier = String(threshold);
+      } else {
+        /* Equal to threshold — skip */
+        return;
+      }
+
+      if (authorized) {
+        /* Real Deriv trade */
+        const snapshot = new Set(openTrades.map((t) => t.contract_id));
+
+        placeRealTrade({
+          symbol,
+          contractType,
+          stake: s,
+          duration: 1,
+          durationUnit: 't',
+          barrier,
+        });
+
+        console.log('[Hyperbot] Real trade fired:', {
+          symbol,
+          contractType,
+          stake: s,
+          barrier,
+          digit: d,
+        });
+
+        /* Poll for new contract id */
+        let cancelled = false;
+        const poll = setInterval(() => {
+          if (cancelled) return;
+          openTrades.forEach((t) => {
+            if (
+              !snapshot.has(t.contract_id) &&
+              !myContractsRef.current.has(t.contract_id)
+            ) {
+              myContractsRef.current.add(t.contract_id);
+              console.log(
+                '[Hyperbot] Registered contract',
+                t.contract_id
+              );
+            }
+          });
+        }, 200);
+        setTimeout(() => {
+          cancelled = true;
+          clearInterval(poll);
+        }, 5000);
+      } else {
+        /* Paper fallback */
+        placePaperTrade({
+          market: marketName,
+          symbol,
+          type: 'over_under',
+          direction:
+            contractType === 'DIGITOVER'
+              ? `Over ${threshold} (${d})`
+              : `Under ${threshold} (${d})`,
+          stake: s,
+          ticks: 1,
+          entryPrice: currentDigit ?? undefined,
+        });
+      }
       placed++;
     });
-    alert(
-      `Placed ${placed} trade${placed !== 1 ? 's' : ''}. Check Reports in a few seconds.`
-    );
+
+    console.log(`[Hyperbot] Fired ${placed} trade(s)`);
   };
 
   const toggleAuto = () => {
@@ -176,7 +259,7 @@ export default function Hyperbot() {
         />
       </div>
 
-      {/* Recent tick info */}
+      {/* Live info */}
       <div className="text-xs text-gray-500 mb-4 flex items-center gap-2 flex-wrap">
         <span>Recent U/U/O</span>
         <span className="ml-auto">
@@ -194,7 +277,7 @@ export default function Hyperbot() {
         </span>
       </div>
 
-      {/* Select Over/Under Digits bars */}
+      {/* Header bars */}
       <div className="grid grid-cols-2 gap-0 mb-4">
         <div className="bg-green-500 text-white text-xs font-semibold px-3 py-1.5">
           Select Over Digits
@@ -281,10 +364,36 @@ export default function Hyperbot() {
       <div className="text-center text-xs text-gray-600 mb-2">
         Total Stake: ${totalStake.toFixed(2)}
       </div>
-      <div className="text-center text-[11px] text-gray-400 mb-6">
-        Threshold: {threshold} | Select digits to trade Over/Under. Digits equal
-        to threshold cannot be selected.
+      <div className="text-center text-[11px] text-gray-400 mb-4">
+        Threshold: {threshold} | Select digits to trade Over/Under. Digits
+        equal to threshold cannot be selected.
       </div>
+
+      {/* Live P/L */}
+      {hyperTrades > 0 && (
+        <div className="max-w-md mx-auto flex justify-between items-center text-xs text-gray-700 border-t border-gray-200 pt-3 mb-4">
+          <span>
+            Total P/L:{' '}
+            <span
+              className={`font-mono font-semibold ${
+                hyperPL > 0
+                  ? 'text-green-600'
+                  : hyperPL < 0
+                  ? 'text-red-600'
+                  : 'text-gray-700'
+              }`}
+            >
+              {hyperPL >= 0 ? '+' : ''}
+              {hyperPL.toFixed(2)}
+            </span>
+          </span>
+          <span>
+            Wins: <span className="text-green-600 font-semibold">{wins}</span>{' '}
+            · Losses:{' '}
+            <span className="text-red-600 font-semibold">{losses}</span>
+          </span>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
