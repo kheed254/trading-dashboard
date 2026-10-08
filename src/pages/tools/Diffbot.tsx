@@ -48,6 +48,10 @@ export default function Diffbot() {
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<number[]>([]);
 
+  /* ---- Auto-trading loop ---- */
+  const [autoRunning, setAutoRunning] = useState(false);
+  const autoRunningRef = useRef(false);
+
   /* Contracts belonging to this Diffbot */
   const myContractsRef = useRef<Set<number>>(new Set());
 
@@ -75,7 +79,6 @@ export default function Diffbot() {
 
     for (let i = 0; i < numContracts; i++) {
       if (authorized) {
-        /* Real Deriv trade */
         const snapshot = new Set(openTrades.map((t) => t.contract_id));
 
         placeRealTrade({
@@ -94,7 +97,6 @@ export default function Diffbot() {
           barrier: String(selectedDigit),
         });
 
-        /* Poll for the new contract ID and register it */
         let cancelled = false;
         const poll = setInterval(() => {
           if (cancelled) return;
@@ -117,7 +119,6 @@ export default function Diffbot() {
           clearInterval(poll);
         }, 5000);
       } else {
-        /* Paper fallback */
         placePaperTrade({
           market: marketName,
           symbol,
@@ -138,6 +139,30 @@ export default function Diffbot() {
   const usePredictedDigit = () => {
     if (least !== null) setSelectedDigit(least);
   };
+
+  /* Auto-fire loop — runs placeContracts every 6 seconds */
+  useEffect(() => {
+    autoRunningRef.current = autoRunning;
+    if (!autoRunning) return;
+
+    /* Fire immediately on start */
+    placeContracts();
+
+    const interval = setInterval(() => {
+      if (!autoRunningRef.current) return;
+      placeContracts();
+    }, 6000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    autoRunning,
+    authorized,
+    marketName,
+    selectedDigit,
+    numContracts,
+    stakePerContract,
+  ]);
 
   return (
     <div className="mt-2">
@@ -252,6 +277,25 @@ export default function Diffbot() {
                 } - Differs from Digit ${selectedDigit}`}
           </button>
 
+          {/* Auto-trading toggle */}
+          <button
+            onClick={() => setAutoRunning((r) => !r)}
+            className={`w-full ${
+              autoRunning
+                ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                : 'bg-green-500 hover:bg-green-600'
+            } text-white text-sm font-semibold py-2.5 rounded-md transition flex items-center justify-center gap-2`}
+          >
+            {autoRunning ? (
+              <>
+                <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                Stop auto trading — every 6s
+              </>
+            ) : (
+              '▶ Start auto trading'
+            )}
+          </button>
+
           {/* Live P/L */}
           {diffTrades > 0 && (
             <div className="flex justify-between items-center text-xs text-gray-600 border-t border-gray-100 pt-3">
@@ -276,6 +320,12 @@ export default function Diffbot() {
                 Losses:{' '}
                 <span className="text-red-600 font-semibold">{losses}</span>
               </span>
+            </div>
+          )}
+
+          {autoRunning && (
+            <div className="text-center text-[11px] text-teal-600 border-t border-gray-100 pt-2">
+              ● Auto trading active — new trade every 6 seconds
             </div>
           )}
 
@@ -316,9 +366,7 @@ export default function Diffbot() {
             <Bullet>
               Click "Place Contracts" to place all contracts simultaneously
             </Bullet>
-            <Bullet>
-              All contracts will target the same selected digit
-            </Bullet>
+            <Bullet>All contracts will target the same selected digit</Bullet>
             <Bullet>
               Each contract uses DIGITDIFF — you WIN if the result digit is
               NOT the selected digit
