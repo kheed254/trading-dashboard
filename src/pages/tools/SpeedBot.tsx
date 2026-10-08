@@ -42,6 +42,11 @@ export default function SpeedBot() {
   const [martingale, setMartingale] = useState(1.0);
   const [running, setRunning] = useState(false);
 
+  /* ---- Risk management ---- */
+  const [stopLoss, setStopLoss] = useState(5);
+  const [takeProfit, setTakeProfit] = useState(5);
+  const stoppedReasonRef = useRef<string | null>(null);
+
   const runningRef = useRef(false);
 
   /* Live market tick (for Last Digit) */
@@ -62,7 +67,7 @@ export default function SpeedBot() {
   /* Contracts that belong to this SpeedBot */
   const myContractsRef = useRef<Set<number>>(new Set());
 
-  /* ---- When a tracked contract settles → update SpeedBot's P/L ---- */
+  /* When a tracked contract settles → update SpeedBot's P/L */
   useEffect(() => {
     openTrades.forEach((t) => {
       if (!myContractsRef.current.has(t.contract_id)) return;
@@ -124,7 +129,6 @@ export default function SpeedBot() {
         : 'Fall';
 
     if (authorized) {
-      /* Snapshot before placing — we'll poll for the new contract id */
       const snapshot = new Set(openTrades.map((t) => t.contract_id));
 
       placeRealTrade({
@@ -144,7 +148,6 @@ export default function SpeedBot() {
         barrier,
       });
 
-      /* Poll for the new contract id for up to 5 seconds */
       let cancelled = false;
       const poll = setInterval(() => {
         if (cancelled) return;
@@ -195,10 +198,8 @@ export default function SpeedBot() {
     runningRef.current = running;
     if (!running) return;
 
-    /* Fire immediately on start */
     placeTradeOnce();
 
-    /* Then fire every ~6 seconds */
     const interval = setInterval(() => {
       if (!runningRef.current) return;
       placeTradeOnce();
@@ -208,8 +209,35 @@ export default function SpeedBot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [running, authorized, market, tradeType, stake, ticks, predictionBefore]);
 
+  /* ---- Auto-stop on SL/TP ---- */
+  useEffect(() => {
+    if (!running) return;
+    if (stoppedReasonRef.current) return;
+
+    if (takeProfit > 0 && speedPL >= takeProfit) {
+      stoppedReasonRef.current = 'TP';
+      setRunning(false);
+      console.log(
+        `[SpeedBot] Take-profit hit (${speedPL.toFixed(
+          2
+        )} >= ${takeProfit}) — stopped`
+      );
+    } else if (stopLoss > 0 && speedPL <= -stopLoss) {
+      stoppedReasonRef.current = 'SL';
+      setRunning(false);
+      console.log(
+        `[SpeedBot] Stop-loss hit (${speedPL.toFixed(
+          2
+        )} <= -${stopLoss}) — stopped`
+      );
+    }
+  }, [speedPL, running, stopLoss, takeProfit]);
+
   const toggleStart = () => {
-    setRunning((r) => !r);
+    setRunning((r) => {
+      if (!r) stoppedReasonRef.current = null;
+      return !r;
+    });
   };
 
   return (
@@ -319,6 +347,33 @@ export default function SpeedBot() {
           </Field>
         </div>
 
+        {/* Risk management row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <Field label="Stop Loss ($)">
+            <input
+              type="number"
+              step="0.5"
+              min={0}
+              value={stopLoss}
+              onChange={(e) => setStopLoss(Number(e.target.value))}
+              className="input"
+              placeholder="0 = off"
+            />
+          </Field>
+
+          <Field label="Take Profit ($)">
+            <input
+              type="number"
+              step="0.5"
+              min={0}
+              value={takeProfit}
+              onChange={(e) => setTakeProfit(Number(e.target.value))}
+              className="input"
+              placeholder="0 = off"
+            />
+          </Field>
+        </div>
+
         {/* Live status row */}
         <div className="flex flex-wrap justify-between items-center gap-4 text-xs text-white/70 border-t border-white/10 pt-4 mb-6">
           <span>
@@ -393,9 +448,22 @@ export default function SpeedBot() {
           </button>
         </div>
 
+        {/* Status messages */}
         {running && (
           <div className="text-center text-[11px] text-teal-300 mt-3">
             ● Auto trading active — new trade every 6 seconds
+          </div>
+        )}
+
+        {stoppedReasonRef.current === 'TP' && !running && (
+          <div className="text-center text-[11px] text-green-400 mt-3">
+            🎯 Auto stopped — Take Profit hit
+          </div>
+        )}
+
+        {stoppedReasonRef.current === 'SL' && !running && (
+          <div className="text-center text-[11px] text-red-400 mt-3">
+            🛑 Auto stopped — Stop Loss hit
           </div>
         )}
       </div>
