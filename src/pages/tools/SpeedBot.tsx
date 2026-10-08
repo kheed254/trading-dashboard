@@ -34,7 +34,7 @@ export default function SpeedBot() {
   const [market, setMarket] = useState('Volatility 100 (1s) Index');
   const [tradeType, setTradeType] = useState('Digits Over');
   const [ticks, setTicks] = useState(1);
-  const [stake, setStake] = useState(5);
+  const [stake, setStake] = useState(0.35);
   const [alternate, setAlternate] = useState(false);
   const [alternateOnLoss, setAlternateOnLoss] = useState(false);
   const [predictionBefore, setPredictionBefore] = useState(5);
@@ -43,7 +43,6 @@ export default function SpeedBot() {
   const [running, setRunning] = useState(false);
 
   const runningRef = useRef(false);
-  const lastFiredAtRef = useRef(0);
 
   /* Live market tick (for Last Digit) */
   const symbol = MARKET_SYMBOL[market] ?? '1HZ100V';
@@ -60,10 +59,10 @@ export default function SpeedBot() {
   const [consecLosses, setConsecLosses] = useState(0);
   const [speedTrades, setSpeedTrades] = useState(0);
 
-  /* Track which contracts belong to this SpeedBot */
+  /* Contracts that belong to this SpeedBot */
   const myContractsRef = useRef<Set<number>>(new Set());
 
-  /* When a tracked contract settles → update SpeedBot's P/L */
+  /* ---- When a tracked contract settles → update SpeedBot's P/L ---- */
   useEffect(() => {
     openTrades.forEach((t) => {
       if (!myContractsRef.current.has(t.contract_id)) return;
@@ -125,6 +124,9 @@ export default function SpeedBot() {
         : 'Fall';
 
     if (authorized) {
+      /* Snapshot before placing — we'll poll for the new contract id */
+      const snapshot = new Set(openTrades.map((t) => t.contract_id));
+
       placeRealTrade({
         symbol,
         contractType,
@@ -133,6 +135,7 @@ export default function SpeedBot() {
         durationUnit: 't',
         barrier,
       });
+
       console.log('[SpeedBot] Real trade fired:', {
         symbol,
         contractType,
@@ -141,13 +144,33 @@ export default function SpeedBot() {
         barrier,
       });
 
+      /* Poll for the new contract id for up to 5 seconds */
+      let cancelled = false;
+      const poll = setInterval(() => {
+        if (cancelled) return;
+        openTrades.forEach((t) => {
+          if (
+            !snapshot.has(t.contract_id) &&
+            !myContractsRef.current.has(t.contract_id)
+          ) {
+            myContractsRef.current.add(t.contract_id);
+            console.log(
+              '[SpeedBot] Registered contract',
+              t.contract_id,
+              'for tracking'
+            );
+          }
+        });
+      }, 200);
       setTimeout(() => {
-        const newest = openTrades.find((t) => !t.is_sold);
-        if (newest) myContractsRef.current.add(newest.contract_id);
-      }, 1200);
+        cancelled = true;
+        clearInterval(poll);
+      }, 5000);
+
       return;
     }
 
+    /* Paper fallback */
     const t: 'rise_fall' | 'even_odd' | 'over_under' | 'digits' =
       tradeType === 'Rise' || tradeType === 'Fall'
         ? 'rise_fall'
@@ -174,13 +197,11 @@ export default function SpeedBot() {
 
     /* Fire immediately on start */
     placeTradeOnce();
-    lastFiredAtRef.current = Date.now();
 
-    /* Then keep firing every ~6 seconds */
+    /* Then fire every ~6 seconds */
     const interval = setInterval(() => {
       if (!runningRef.current) return;
       placeTradeOnce();
-      lastFiredAtRef.current = Date.now();
     }, 6000);
 
     return () => clearInterval(interval);
@@ -372,7 +393,6 @@ export default function SpeedBot() {
           </button>
         </div>
 
-        {/* Running indicator */}
         {running && (
           <div className="text-center text-[11px] text-teal-300 mt-3">
             ● Auto trading active — new trade every 6 seconds
