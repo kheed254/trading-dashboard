@@ -200,7 +200,6 @@ export default function BotBuilder() {
     pl: 0,
   });
 
-  /* ---- Martingale tracking ---- */
   const [currentStake, setCurrentStake] = useState<number | null>(null);
   const consecutiveLossesRef = useRef(0);
 
@@ -283,6 +282,22 @@ export default function BotBuilder() {
 
         setActiveContractId(null);
 
+        /* ---- Take-profit check ---- */
+        const tp = getTakeProfit();
+        setBotStats((prev) => {
+          if (tp > 0 && prev.pl >= tp) {
+            if (botRunningRef.current) {
+              setBotRunning(false);
+              addJournal(
+                `🎯 Take-profit hit (+$${prev.pl.toFixed(2)}) — bot stopped`,
+                'profit'
+              );
+            }
+          }
+          return prev;
+        });
+
+        /* ---- Stop-loss check ---- */
         const sl = getStopLoss();
         setBotStats((prev) => {
           if (sl > 0 && sl < 900 && prev.pl <= -sl) {
@@ -304,6 +319,13 @@ export default function BotBuilder() {
   const getStopLoss = (): number => {
     const tp = getTradeParams();
     const raw = tp?.runOnceValues?.['Stop Loss'];
+    const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
+    return isNaN(val) ? 0 : val;
+  };
+
+  const getTakeProfit = (): number => {
+    const tp = getTradeParams();
+    const raw = tp?.runOnceValues?.['Expected Profit'];
     const val = typeof raw === 'string' ? parseFloat(raw) : Number(raw);
     return isNaN(val) ? 0 : val;
   };
@@ -462,7 +484,6 @@ export default function BotBuilder() {
     }
     const next = !botRunning;
     if (next) {
-      /* Starting fresh — reset Martingale state */
       consecutiveLossesRef.current = 0;
       setCurrentStake(getBaseStake());
     }
@@ -598,7 +619,6 @@ export default function BotBuilder() {
 
       {/* RIGHT PANEL */}
       <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-        {/* Run bar */}
         <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
           <button
             onClick={toggleRun}
@@ -640,7 +660,6 @@ export default function BotBuilder() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-gray-200 text-sm">
           {(['summary', 'transactions', 'journal'] as const).map((k) => (
             <button
@@ -661,9 +680,7 @@ export default function BotBuilder() {
           ))}
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {/* ========== SUMMARY ========== */}
           {detailTab === 'summary' &&
             (() => {
               const active = openTrades.find(
@@ -765,7 +782,6 @@ export default function BotBuilder() {
                         </div>
                       </div>
 
-                      {/* Martingale status */}
                       {consecutiveLossesRef.current > 0 && (
                         <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2">
                           Martingale level {consecutiveLossesRef.current} —
@@ -779,7 +795,6 @@ export default function BotBuilder() {
               );
             })()}
 
-          {/* ========== TRANSACTIONS ========== */}
           {detailTab === 'transactions' && (
             <div>
               <div className="flex gap-2 px-3 py-2 border-b border-gray-100">
@@ -880,7 +895,6 @@ export default function BotBuilder() {
             </div>
           )}
 
-          {/* ========== JOURNAL ========== */}
           {detailTab === 'journal' && (
             <div className="p-3 text-xs">
               {botJournal.length === 0 ? (
@@ -916,7 +930,6 @@ export default function BotBuilder() {
           )}
         </div>
 
-        {/* Bottom stats */}
         <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center">
           <Stat
             label="Total stake"
