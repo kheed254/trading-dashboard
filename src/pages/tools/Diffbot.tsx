@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../../lib/deriv';
 import { computeDigitStats, leastFrequent } from '../../lib/digitStats';
 import { useTradeStore } from '../../lib/trading/store';
+import { useAuthWs } from '../../lib/auth-ws';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -19,7 +20,7 @@ export default function Diffbot() {
   const [marketName, setMarketName] = useState('Volatility 100 (1s) Index');
   const [selectedDigit, setSelectedDigit] = useState(5);
   const [numContracts, setNumContracts] = useState(1);
-  const [stakePerContract, setStakePerContract] = useState(0.5);
+  const [stakePerContract, setStakePerContract] = useState(0.35);
   const [analysisCount, setAnalysisCount] = useState(100);
 
   /* ---- Live stream ---- */
@@ -29,36 +30,109 @@ export default function Diffbot() {
     analysisCount
   );
 
-  /* ---- Trade store ---- */
-  const { placeTrade } = useTradeStore();
+  /* ---- Stores ---- */
+  const { placeTrade: placePaperTrade } = useTradeStore();
+  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
 
   /* ---- Stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const least = digits.length >= 5 ? leastFrequent(digitStats) : null;
 
-  /* ---- Actions ---- */
+  /* ---- Local P/L + W/L tracking ---- */
+  const [diffPL, setDiffPL] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [diffTrades, setDiffTrades] = useState(0);
+
+  /* ---- Placement feedback ---- */
   const [placing, setPlacing] = useState(false);
   const [placed, setPlaced] = useState<number[]>([]);
 
+  /* Contracts belonging to this Diffbot */
+  const myContractsRef = useRef<Set<number>>(new Set());
+
+  /* Watch for settled contracts → update stats */
+  useEffect(() => {
+    openTrades.forEach((t) => {
+      if (!myContractsRef.current.has(t.contract_id)) return;
+      if (!t.is_sold) return;
+      myContractsRef.current.delete(t.contract_id);
+
+      const won = t.profit > 0;
+      setDiffPL((prev) => +(prev + t.profit).toFixed(2));
+      setDiffTrades((prev) => prev + 1);
+      if (won) setWins((w) => w + 1);
+      else setLosses((l) => l + 1);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades]);
+
+  /* ---- Place N contracts ---- */
   const placeContracts = () => {
     setPlacing(true);
-    setTimeout(() => {
-      const direction = `Differs ${selectedDigit}`;
-      for (let i = 0; i < numContracts; i++) {
-        placeTrade({
+
+    const direction = `Differs ${selectedDigit}`;
+
+    for (let i = 0; i < numContracts; i++) {
+      if (authorized) {
+        /* Real Deriv trade */
+        const snapshot = new Set(openTrades.map((t) => t.contract_id));
+
+        placeRealTrade({
+          symbol,
+          contractType: 'DIGITDIFF',
+          stake: stakePerContract,
+          duration: 1,
+          durationUnit: 't',
+          barrier: String(selectedDigit),
+        });
+
+        console.log('[Diffbot] Real trade fired:', {
+          symbol,
+          contractType: 'DIGITDIFF',
+          stake: stakePerContract,
+          barrier: String(selectedDigit),
+        });
+
+        /* Poll for the new contract ID and register it */
+        let cancelled = false;
+        const poll = setInterval(() => {
+          if (cancelled) return;
+          openTrades.forEach((t) => {
+            if (
+              !snapshot.has(t.contract_id) &&
+              !myContractsRef.current.has(t.contract_id)
+            ) {
+              myContractsRef.current.add(t.contract_id);
+              console.log(
+                '[Diffbot] Registered contract',
+                t.contract_id,
+                'for tracking'
+              );
+            }
+          });
+        }, 200);
+        setTimeout(() => {
+          cancelled = true;
+          clearInterval(poll);
+        }, 5000);
+      } else {
+        /* Paper fallback */
+        placePaperTrade({
           market: marketName,
-          symbol: MARKET_MAP[marketName],
+          symbol,
           type: 'matches_differs',
           direction,
           stake: stakePerContract,
-          ticks: 5,
+          ticks: 1,
           entryPrice: price ?? undefined,
         });
       }
-      const ts = Date.now();
-      setPlaced((p) => [...p, ts]);
-      setPlacing(false);
-    }, 400);
+    }
+
+    const ts = Date.now();
+    setPlaced((p) => [...p, ts]);
+    setTimeout(() => setPlacing(false), 500);
   };
 
   const usePredictedDigit = () => {
@@ -178,6 +252,33 @@ export default function Diffbot() {
                 } - Differs from Digit ${selectedDigit}`}
           </button>
 
+          {/* Live P/L */}
+          {diffTrades > 0 && (
+            <div className="flex justify-between items-center text-xs text-gray-600 border-t border-gray-100 pt-3">
+              <span>
+                Total P/L:{' '}
+                <span
+                  className={`font-mono font-semibold ${
+                    diffPL > 0
+                      ? 'text-green-600'
+                      : diffPL < 0
+                      ? 'text-red-600'
+                      : 'text-gray-600'
+                  }`}
+                >
+                  {diffPL >= 0 ? '+' : ''}
+                  {diffPL.toFixed(2)}
+                </span>
+              </span>
+              <span>
+                Wins:{' '}
+                <span className="text-green-600 font-semibold">{wins}</span> ·
+                Losses:{' '}
+                <span className="text-red-600 font-semibold">{losses}</span>
+              </span>
+            </div>
+          )}
+
           {placed.length > 0 && (
             <div className="text-xs text-gray-400 pt-2 border-t border-gray-100">
               {placed.length} placement{placed.length !== 1 ? 's' : ''} this
@@ -207,7 +308,9 @@ export default function Diffbot() {
           </h2>
 
           <ul className="space-y-3 text-sm">
-            <Bullet>Select a digit (0-9) that you want to "differ" from</Bullet>
+            <Bullet>
+              Select a digit (0-9) that you want to "differ" from
+            </Bullet>
             <Bullet>Set the number of contracts to place in one run</Bullet>
             <Bullet>Set the stake amount per contract</Bullet>
             <Bullet>
@@ -217,8 +320,8 @@ export default function Diffbot() {
               All contracts will target the same selected digit
             </Bullet>
             <Bullet>
-              Each contract uses DIGITDIFF — you WIN if the result digit is NOT
-              the selected digit
+              Each contract uses DIGITDIFF — you WIN if the result digit is
+              NOT the selected digit
             </Bullet>
             <Bullet>
               Example: if you select digit 3, you win if result is
