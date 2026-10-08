@@ -39,12 +39,12 @@ export type OpenTrade = {
 
 export type PlaceTradeInput = {
   symbol: string;
-  contractType: string; // e.g. "CALL", "PUT", "DIGITEVEN", "DIGITODD", "DIGITOVER", "DIGITUNDER", "DIGITMATCH", "DIGITDIFF"
+  contractType: string;
   stake: number;
-  duration: number;      // e.g. 5
-  durationUnit: string;  // "t" ticks, "m" minutes etc.
-  barrier?: string;      // for DIGITOVER/DIGITUNDER/DIGITMATCH/DIGITDIFF
-  currency?: string;     // default USD
+  duration: number;
+  durationUnit: string;
+  barrier?: string;
+  currency?: string;
 };
 
 export type AuthWsState = {
@@ -98,7 +98,9 @@ async function fetchOtpUrl(token: string, accountId: string): Promise<string> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
-      err?.errors?.[0]?.message || err?.error || `OTP fetch failed (${res.status})`
+      err?.errors?.[0]?.message ||
+        err?.error ||
+        `OTP fetch failed (${res.status})`
     );
   }
   const data = await res.json();
@@ -118,7 +120,6 @@ export function useAuthWs(): AuthWsState {
   const tokenRef = useRef<string | null>(null);
   const accountsRef = useRef<DerivAccount[]>([]);
 
-  /* Pending proposal requests → resolver, so placeTrade can await the response */
   const proposalWaitersRef = useRef<Record<number, (data: any) => void>>({});
   const proposalIdCounterRef = useRef(9000);
 
@@ -139,7 +140,6 @@ export function useAuthWs(): AuthWsState {
 
       ws.onopen = () => {
         console.log('[StingerFX] WebSocket connected via OTP');
-        /* Subscribe to balance + portfolio updates */
         ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
         ws.send(JSON.stringify({ portfolio: 1 }));
       };
@@ -166,7 +166,7 @@ export function useAuthWs(): AuthWsState {
           );
         }
 
-        /* --- proposal response (from placeTrade) --- */
+        /* --- Proposal response --- */
         if (data.msg_type === 'proposal' && data.req_id) {
           const waiter = proposalWaitersRef.current[data.req_id];
           if (waiter) {
@@ -175,7 +175,7 @@ export function useAuthWs(): AuthWsState {
           }
         }
 
-        /* --- buy response --- */
+        /* --- Buy response (assign unique req_id per contract) --- */
         if (data.msg_type === 'buy' && data.req_id && data.req_id >= 9100) {
           if (data.error) {
             console.warn('[StingerFX] Buy error:', data.error);
@@ -183,19 +183,23 @@ export function useAuthWs(): AuthWsState {
           }
           const b = data.buy;
           console.log('[StingerFX] Bought contract', b.contract_id);
-          /* Subscribe to that contract for live updates */
+          /* Use a UNIQUE req_id per contract so multiple in-flight
+             contracts don't overwrite each other's subscription. */
           ws.send(
             JSON.stringify({
               proposal_open_contract: 1,
               contract_id: b.contract_id,
               subscribe: 1,
-              req_id: 9200,
+              req_id: 20000 + b.contract_id,
             })
           );
         }
 
-        /* --- proposal_open_contract updates --- */
-        if (data.msg_type === 'proposal_open_contract' && data.proposal_open_contract) {
+        /* --- proposal_open_contract updates (per-contract req_id) --- */
+        if (
+          data.msg_type === 'proposal_open_contract' &&
+          data.proposal_open_contract
+        ) {
           const c = data.proposal_open_contract;
           setOpenTrades((prev) => {
             const idx = prev.findIndex((t) => t.contract_id === c.contract_id);
@@ -220,9 +224,18 @@ export function useAuthWs(): AuthWsState {
             }
             return [trade, ...prev];
           });
+
+          if (c.is_sold) {
+            console.log(
+              '[StingerFX] Settled contract',
+              c.contract_id,
+              'profit',
+              c.profit
+            );
+          }
         }
 
-        /* --- portfolio --- */
+        /* --- Portfolio --- */
         if (data.msg_type === 'portfolio' && data.portfolio) {
           console.log(
             '[StingerFX] Portfolio:',
@@ -237,7 +250,8 @@ export function useAuthWs(): AuthWsState {
         }
       };
 
-      ws.onerror = () => setError('WebSocket error — check your connection.');
+      ws.onerror = () =>
+        setError('WebSocket error — check your connection.');
       ws.onclose = () => console.log('[StingerFX] WebSocket closed');
 
       setAuthorized(true);
@@ -333,9 +347,8 @@ export function useAuthWs(): AuthWsState {
     }
 
     const propReqId = ++proposalIdCounterRef.current;
-    const buyReqId = propReqId + 100; // 9100, 9200 etc.
+    const buyReqId = propReqId + 100;
 
-    /* Build the proposal request */
     const proposalReq: Record<string, any> = {
       proposal: 1,
       amount: input.stake,
@@ -351,7 +364,6 @@ export function useAuthWs(): AuthWsState {
 
     console.log('[StingerFX] Sending proposal:', proposalReq);
 
-    /* Wait for the proposal response, then buy */
     proposalWaitersRef.current[propReqId] = (resp) => {
       if (resp.error) {
         console.warn('[StingerFX] Proposal error:', resp.error.message);
@@ -359,7 +371,6 @@ export function useAuthWs(): AuthWsState {
       }
       const prop = resp.proposal;
       console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
-
       ws.send(
         JSON.stringify({
           buy: prop.id,
