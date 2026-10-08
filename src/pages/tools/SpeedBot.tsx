@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTradeStore } from '../../lib/trading/store';
+import { useAuthWs } from '../../lib/auth-ws';
 
 const MARKETS = [
   'Volatility 10 (1s) Index',
@@ -40,10 +41,32 @@ export default function SpeedBot() {
   const [martingale, setMartingale] = useState(1.0);
   const [running, setRunning] = useState(false);
 
-  const { placeTrade } = useTradeStore();
+  const { placeTrade: placePaperTrade } = useTradeStore();
+  const { authorized, placeTrade: placeRealTrade } = useAuthWs();
 
   const placeTradeOnce = () => {
-    const direction =
+    const symbol = MARKET_SYMBOL[market] ?? '1HZ100V';
+
+    /* Map trade type → Deriv contract type + optional barrier */
+    let contractType = 'CALL';
+    let barrier: string | undefined;
+    if (tradeType === 'Digits Over') {
+      contractType = 'DIGITOVER';
+      barrier = String(predictionBefore);
+    } else if (tradeType === 'Digits Under') {
+      contractType = 'DIGITUNDER';
+      barrier = String(predictionBefore);
+    } else if (tradeType === 'Digits Even') {
+      contractType = 'DIGITEVEN';
+    } else if (tradeType === 'Digits Odd') {
+      contractType = 'DIGITODD';
+    } else if (tradeType === 'Rise') {
+      contractType = 'CALL';
+    } else {
+      contractType = 'PUT';
+    }
+
+    const dirLabel =
       tradeType === 'Digits Over'
         ? `Over ${predictionBefore}`
         : tradeType === 'Digits Under'
@@ -56,6 +79,27 @@ export default function SpeedBot() {
         ? 'Rise'
         : 'Fall';
 
+    /* If logged in → real Deriv trade */
+    if (authorized) {
+      placeRealTrade({
+        symbol,
+        contractType,
+        stake,
+        duration: Math.max(1, ticks),
+        durationUnit: 't',
+        barrier,
+      });
+      console.log('[SpeedBot] Real trade:', {
+        symbol,
+        contractType,
+        stake,
+        ticks,
+        barrier,
+      });
+      return;
+    }
+
+    /* Fallback → paper trade */
     const t: 'rise_fall' | 'even_odd' | 'over_under' | 'digits' =
       tradeType === 'Rise' || tradeType === 'Fall'
         ? 'rise_fall'
@@ -65,20 +109,16 @@ export default function SpeedBot() {
         ? 'over_under'
         : 'digits';
 
-    placeTrade({
+    placePaperTrade({
       market,
-      symbol: MARKET_SYMBOL[market] ?? '1HZ100V',
+      symbol,
       type: t,
-      direction,
+      direction: dirLabel,
       stake,
       ticks,
     });
 
-    alert(
-      `Trade placed: ${direction} on ${market}\nStake: $${stake.toFixed(
-        2
-      )}\nCheck Reports in a few seconds.`
-    );
+    alert(`Paper trade placed (not logged in): ${dirLabel}`);
   };
 
   const toggleStart = () => {
