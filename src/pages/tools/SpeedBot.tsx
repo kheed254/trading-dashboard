@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTradeStore } from '../../lib/trading/store';
 import { useAuthWs } from '../../lib/auth-ws';
+import { useTicks } from '../../lib/deriv';
 
 const MARKETS = [
   'Volatility 10 (1s) Index',
@@ -33,7 +34,7 @@ export default function SpeedBot() {
   const [market, setMarket] = useState('Volatility 100 (1s) Index');
   const [tradeType, setTradeType] = useState('Digits Over');
   const [ticks, setTicks] = useState(1);
-  const [stake, setStake] = useState(0.5);
+  const [stake, setStake] = useState(5);
   const [alternate, setAlternate] = useState(false);
   const [alternateOnLoss, setAlternateOnLoss] = useState(false);
   const [predictionBefore, setPredictionBefore] = useState(5);
@@ -41,12 +42,56 @@ export default function SpeedBot() {
   const [martingale, setMartingale] = useState(1.0);
   const [running, setRunning] = useState(false);
 
+  /* Live market tick (for Last Digit) */
+  const symbol = MARKET_SYMBOL[market] ?? '1HZ100V';
+  const { price: livePrice } = useTicks(symbol as any);
+
   const { placeTrade: placePaperTrade } = useTradeStore();
-  const { authorized, placeTrade: placeRealTrade } = useAuthWs();
+  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
+
+  /* ---- Local P/L tracking ---- */
+  const [speedPL, setSpeedPL] = useState(0);
+  const [wins, setWins] = useState(0);
+  const [losses, setLosses] = useState(0);
+  const [consecWins, setConsecWins] = useState(0);
+  const [consecLosses, setConsecLosses] = useState(0);
+  const [speedTrades, setSpeedTrades] = useState(0);
+
+  /* Track which contracts belong to this SpeedBot */
+  const myContractsRef = useRef<Set<number>>(new Set());
+
+  /* When a tracked contract settles → update SpeedBot's P/L */
+  useEffect(() => {
+    openTrades.forEach((t) => {
+      if (!myContractsRef.current.has(t.contract_id)) return;
+      if (!t.is_sold) return;
+
+      /* Already counted? Remove from set so we don't double-count */
+      myContractsRef.current.delete(t.contract_id);
+
+      const won = t.profit > 0;
+      setSpeedPL((prev) => +(prev + t.profit).toFixed(2));
+      setSpeedTrades((prev) => prev + 1);
+      if (won) {
+        setWins((w) => w + 1);
+        setConsecWins((c) => c + 1);
+        setConsecLosses(0);
+      } else {
+        setLosses((l) => l + 1);
+        setConsecLosses((c) => c + 1);
+        setConsecWins(0);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades]);
+
+  /* Last digit from live price */
+  const lastDigit =
+    livePrice !== null
+      ? Number(livePrice.toFixed(2).replace('.', '').slice(-1))
+      : null;
 
   const placeTradeOnce = () => {
-    const symbol = MARKET_SYMBOL[market] ?? '1HZ100V';
-
     /* Map trade type → Deriv contract type + optional barrier */
     let contractType = 'CALL';
     let barrier: string | undefined;
@@ -96,6 +141,12 @@ export default function SpeedBot() {
         ticks,
         barrier,
       });
+
+      /* Track the newest open trade as ours (after a beat) */
+      setTimeout(() => {
+        const newest = openTrades.find((t) => !t.is_sold);
+        if (newest) myContractsRef.current.add(newest.contract_id);
+      }, 1200);
       return;
     }
 
@@ -235,12 +286,50 @@ export default function SpeedBot() {
           </Field>
         </div>
 
-        {/* Status row */}
+        {/* Live status row — now wired to real data */}
         <div className="flex flex-wrap justify-between items-center gap-4 text-xs text-white/70 border-t border-white/10 pt-4 mb-6">
-          <span>Total Profit/Loss: 0.00</span>
-          <span>Last Digit: -</span>
-          <span>Consecutive Wins: 0 Consecutive Losses: 0</span>
+          <span>
+            Total Profit/Loss:{' '}
+            <span
+              className={`font-mono font-semibold ${
+                speedPL > 0
+                  ? 'text-green-400'
+                  : speedPL < 0
+                  ? 'text-red-400'
+                  : 'text-white/70'
+              }`}
+            >
+              {speedPL >= 0 ? '+' : ''}
+              {speedPL.toFixed(2)}
+            </span>
+          </span>
+          <span>
+            Last Digit:{' '}
+            <span className="font-mono font-semibold text-white">
+              {lastDigit !== null ? lastDigit : '-'}
+            </span>
+          </span>
+          <span>
+            Consecutive Wins:{' '}
+            <span className="font-semibold text-green-400">{consecWins}</span>{' '}
+            Consecutive Losses:{' '}
+            <span className="font-semibold text-red-400">{consecLosses}</span>
+          </span>
         </div>
+
+        {/* Trades / W/L summary */}
+        {speedTrades > 0 && (
+          <div className="flex justify-between items-center text-xs text-white/60 border-t border-white/10 pt-3 mb-4">
+            <span>
+              Trades: <span className="text-white font-semibold">{speedTrades}</span>
+            </span>
+            <span>
+              Wins: <span className="text-green-400 font-semibold">{wins}</span>{' '}
+              · Losses:{' '}
+              <span className="text-red-400 font-semibold">{losses}</span>
+            </span>
+          </div>
+        )}
 
         {/* Buttons */}
         <div className="flex flex-wrap justify-center gap-3">
@@ -263,7 +352,7 @@ export default function SpeedBot() {
         </div>
       </div>
 
-      {/* Local styles for input fields */}
+      {/* Local styles */}
       <style>{`
         .input {
           width: 100%;
