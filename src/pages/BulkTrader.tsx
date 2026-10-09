@@ -106,7 +106,7 @@ export default function BulkTrader() {
         )}
       </div>
 
-      {/* DIGIT CIRCLES 0-9 */}
+      {/* DIGIT CIRCLES 0-9 — scrollable on mobile */}
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-8">
         <div className="flex justify-between gap-2 min-w-[640px]">
           {digitStats.map((d) => {
@@ -137,7 +137,7 @@ export default function BulkTrader() {
         {digits.length}/{numTicks}
       </div>
 
-      {/* TICKS / STAKE / NO OF TRADES */}
+      {/* TICKS / STAKE / NO OF TRADES — stack on mobile */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div>
           <Label center>Ticks</Label>
@@ -169,7 +169,7 @@ export default function BulkTrader() {
         </div>
       </div>
 
-      {/* EVEN / ODD BARS */}
+      {/* EVEN / ODD BARS — stack on mobile */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <div className="bg-teal-500 text-white rounded-md px-4 py-3">
           <div className="font-semibold text-center">Even</div>
