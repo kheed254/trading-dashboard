@@ -132,7 +132,15 @@ export default function Layout() {
     }
   };
 
-  const isBotBuilder = location.pathname === '/bot_builder';
+  const handleDockRun = () => {
+    if (location.pathname === '/bot_builder') {
+      // Already on Bot Builder — dispatch the run/stop event directly
+      window.dispatchEvent(new CustomEvent('sfx-toggle-run'));
+    } else {
+      // Navigate to Bot Builder; user taps Run there
+      navigate('/bot_builder');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -314,46 +322,49 @@ export default function Layout() {
         `}</style>
       </header>
 
-      <div className={isBotBuilder ? '' : 'pb-20 md:pb-0'}>
+      <div className="pb-20 md:pb-0">
         <Outlet />
       </div>
 
-      {!isBotBuilder && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
-          <div className="flex items-center gap-2 px-3 py-2">
-            <button
-              onClick={() => navigate('/bot_builder')}
-              className={`${
-                botStatus.running
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-teal-500 hover:bg-teal-600'
-              } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
-            >
-              <span className="text-xs">{botStatus.running ? '■' : '▶'}</span>
-              {botStatus.running ? 'Stop' : 'Run'}
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] text-white/60 mb-0.5 truncate">
-                {botStatus.statusText}
-              </div>
-              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-teal-500 transition-all"
-                  style={{ width: `${botStatus.progress}%` }}
-                />
-              </div>
+      {/* ===== BOTTOM DOCK (mobile) — always visible ===== */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <button
+            onClick={handleDockRun}
+            className={`${
+              botStatus.running
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-teal-500 hover:bg-teal-600'
+            } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
+          >
+            <span className="text-xs">{botStatus.running ? '■' : '▶'}</span>
+            {botStatus.running ? 'Stop' : 'Run'}
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] text-white/60 mb-0.5 truncate">
+              {botStatus.statusText}
             </div>
-            <button
-              onClick={() =>
-                alert(botStatus.running ? 'Bot is running.' : 'Bot is idle. Tap Run to start.')
-              }
-              className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
-            >
-              i
-            </button>
+            <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-teal-500 transition-all"
+                style={{ width: `${botStatus.progress}%` }}
+              />
+            </div>
           </div>
+          <button
+            onClick={() =>
+              alert(
+                botStatus.running
+                  ? 'Bot is running. Tap Stop to pause.'
+                  : 'Bot is idle. Tap Run to start.'
+              )
+            }
+            className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
+          >
+            i
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
