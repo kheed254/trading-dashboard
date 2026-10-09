@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws';
@@ -51,7 +51,7 @@ const IconCopyTrading = () => (
   </svg>
 );
 
-/* ---------- Demo badge — circular grey-blue "D" mark ---------- */
+/* ---------- Demo badge ---------- */
 const DemoBadge = ({ size = 28 }: { size?: number }) => (
   <span
     className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0"
@@ -95,14 +95,17 @@ function fmtMoney(n: number): string {
 }
 
 export default function Layout() {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountsExpanded, setAccountsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<'real' | 'demo' | null>(null);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
   const { authorized, user, switchAccount } = useAuthWs();
+
+  /* Hide bottom dock on Bot Builder — that page has its own controls */
+  const isBotBuilder = location.pathname === '/bot_builder';
 
   const tab: 'real' | 'demo' =
     activeTab ?? (user?.isVirtual ? 'demo' : 'real');
@@ -132,8 +135,9 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-navy text-white sticky top-0 z-40">
+        {/* ── TOP ROW: logo + balance + (hamburger gone on desktop) ── */}
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
-          <div className="flex items-center gap-4 lg:gap-6 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <NavLink
               to="/"
               className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0"
@@ -141,30 +145,9 @@ export default function Layout() {
               Stinger<span className="text-brand-teal">FX</span>
             </NavLink>
 
-            <nav className="hidden xl:flex items-center gap-0.5 text-[13px]">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    `px-2.5 py-4 transition whitespace-nowrap flex items-center gap-1.5 ${
-                      isActive
-                        ? 'border-b-2 border-red-500 font-medium'
-                        : 'hover:text-brand-teal'
-                    }`
-                  }
-                >
-                  <item.Icon />
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Live V100 ticker */}
+            {/* V100 ticker */}
             <div
-              className="hidden md:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
+              className="hidden lg:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
               title="Volatility 100 (1s) Index — live"
             >
               <span
@@ -177,15 +160,16 @@ export default function Layout() {
                 {livePrice !== null ? livePrice.toFixed(2) : '—'}
               </span>
             </div>
+          </div>
 
+          <div className="flex items-center gap-2 shrink-0">
             {authorized && user ? (
               <div className="relative">
-                {/* ============ PILL ============ */}
+                {/* Balance pill */}
                 <button
                   onClick={() => setAccountOpen((o) => !o)}
-                  className="flex items-center gap-2.5 bg-white hover:bg-gray-50 px-2 py-1 rounded-full text-sm transition shadow-sm border border-gray-100"
+                  className="flex items-center gap-2 bg-white hover:bg-gray-50 px-2 py-1 rounded-full text-sm transition shadow-sm border border-gray-100"
                 >
-                  {/* Flag (Real) or demo badge (Demo) */}
                   {tab === 'real' ? (
                     <span className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
                       <img
@@ -197,7 +181,7 @@ export default function Layout() {
                   ) : (
                     <DemoBadge size={28} />
                   )}
-                  <span className="font-mono font-bold text-brand-teal tabular-nums">
+                  <span className="font-mono font-bold text-brand-teal tabular-nums text-xs sm:text-sm">
                     {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
                   <svg
@@ -211,15 +195,14 @@ export default function Layout() {
                   </svg>
                 </button>
 
-                {/* ============ DROPDOWN ============ */}
                 {accountOpen && (
                   <>
                     <div
                       className="fixed inset-0 z-[999]"
                       onClick={() => setAccountOpen(false)}
                     />
-                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[340px] z-[1000] overflow-hidden">
-                      {/* Real / Demo tabs */}
+                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[300px] sm:w-[340px] z-[1000] overflow-hidden">
+                      {/* Real/Demo tabs */}
                       <div className="flex border-b border-gray-200">
                         {(['real', 'demo'] as const).map((t) => (
                           <button
@@ -236,7 +219,6 @@ export default function Layout() {
                         ))}
                       </div>
 
-                      {/* Collapsible "Deriv accounts" section */}
                       <div>
                         <button
                           onClick={() => setAccountsExpanded((x) => !x)}
@@ -323,7 +305,6 @@ export default function Layout() {
                         )}
                       </div>
 
-                      {/* Logout */}
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100 font-medium flex items-center justify-between"
@@ -336,10 +317,10 @@ export default function Layout() {
                 )}
               </div>
             ) : (
-              <>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={startDerivLogin}
-                  className="hidden sm:block text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
+                  className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 border border-white/40 rounded-full hover:bg-white/10 whitespace-nowrap"
                 >
                   Log in
                 </button>
@@ -349,109 +330,77 @@ export default function Layout() {
                 >
                   Sign up
                 </button>
-              </>
+              </div>
             )}
-
-            <button
-              onClick={() => setMobileOpen((o) => !o)}
-              className="xl:hidden p-2 rounded hover:bg-white/10"
-              aria-label="Toggle menu"
-            >
-              {mobileOpen ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M6 6l12 12M6 18L18 6" />
-                </svg>
-              ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                >
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
-            </button>
           </div>
         </div>
 
-        {mobileOpen && (
-          <nav className="xl:hidden border-t border-white/10 bg-navy max-h-[80vh] overflow-y-auto">
-            {navItems.map((item) => {
-              const isActive = location.pathname.startsWith(item.to);
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 border-b border-white/5 text-sm ${
+        {/* ── SECOND ROW: swipeable tabs (visible on all screens) ── */}
+        <nav className="bg-navy border-t border-white/5 px-2 overflow-x-auto whitespace-nowrap tab-scroll">
+          <div className="flex items-center gap-0.5 text-[13px] min-w-max px-2">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) =>
+                  `px-3 py-3 transition whitespace-nowrap flex items-center gap-1.5 ${
                     isActive
-                      ? 'bg-white/10 text-brand-teal font-semibold'
-                      : 'text-white/90 hover:bg-white/5'
-                  }`}
-                >
-                  <item.Icon />
-                  {item.label}
-                </NavLink>
-              );
-            })}
+                      ? 'border-b-2 border-red-500 font-medium text-white'
+                      : 'text-white/80 hover:text-brand-teal'
+                  }`
+                }
+              >
+                <item.Icon />
+                {item.label}
+              </NavLink>
+            ))}
+          </div>
+        </nav>
 
-            {authorized && user ? (
-              <div className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {user.isVirtual ? (
-                    <DemoBadge size={28} />
-                  ) : (
-                    <span className="w-7 h-7 rounded-full overflow-hidden border border-white/30">
-                      <img
-                        src="https://flagcdn.com/w80/us.png"
-                        alt="USD"
-                        className="w-full h-full object-cover"
-                      />
-                    </span>
-                  )}
-                  <div>
-                    <div className="text-xs text-white/60">Balance</div>
-                    <div className="text-sm font-mono font-semibold">
-                      {fmtMoney(user.balance)} {user.currency}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="text-sm px-4 py-2 border border-red-400 text-red-300 rounded-full font-semibold"
-                >
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2 p-4 sm:hidden">
-                <button
-                  onClick={startDerivLogin}
-                  className="flex-1 text-sm px-3 py-2 border border-white/40 rounded-full hover:bg-white/10"
-                >
-                  Log in
-                </button>
-                <button
-                  onClick={startDerivLogin}
-                  className="flex-1 text-sm px-3 py-2 bg-brand-pink text-navy rounded-full font-semibold"
-                >
-                  Sign up
-                </button>
-              </div>
-            )}
-          </nav>
-        )}
+        {/* Hide the scrollbar on the tab strip */}
+        <style>{`
+          .tab-scroll::-webkit-scrollbar { display: none; }
+          .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        `}</style>
       </header>
 
-      <Outlet />
+      {/* ── PAGE CONTENT ── add bottom padding so the dock doesn't hide content */}
+      <div className={isBotBuilder ? '' : 'pb-20 md:pb-0'}>
+        <Outlet />
+      </div>
+
+      {/* ── BOTTOM DOCK (mobile only, hidden on Bot Builder) ── */}
+      {!isBotBuilder && (
+        <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-30">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <button
+              onClick={() => navigate('/bot_builder')}
+              className="bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0"
+            >
+              <span className="text-xs">▶</span>
+              Run
+            </button>
+            <div className="flex-1">
+              <div className="text-[10px] text-white/60 mb-0.5">
+                Bot is not running
+              </div>
+              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 w-0" />
+              </div>
+            </div>
+            <button
+              onClick={() =>
+                alert(
+                  'Bot status: idle. Open Bot Builder to start a bot.'
+                )
+              }
+              className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
+            >
+              i
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
