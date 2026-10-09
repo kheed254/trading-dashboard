@@ -18,14 +18,6 @@ const SOURCES: { id: Source; label: string }[] = [
   { id: 'paper', label: 'Paper' },
 ];
 
-function fmtMoney(n: number): string {
-  return n.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-/* Unified row shape — both real and paper trades map to this */
 type UnifiedTrade = {
   id: string;
   source: 'real' | 'paper';
@@ -39,16 +31,13 @@ type UnifiedTrade = {
 };
 
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState<'trades' | 'statement'>(
-    'trades'
-  );
+  const [activeTab, setActiveTab] = useState<'trades' | 'statement'>('trades');
   const [period, setPeriod] = useState<Period>('7d');
   const [source, setSource] = useState<Source>('all');
 
   const { trades: paperTrades, clearAll } = useTradeStore();
   const { authorized, openTrades } = useAuthWs();
 
-  /* ============ Combine ============ */
   const allTrades: UnifiedTrade[] = useMemo(() => {
     const real: UnifiedTrade[] = openTrades.map((t) => ({
       id: `real-${t.contract_id}`,
@@ -79,18 +68,15 @@ export default function Reports() {
     return [...real, ...paper].sort((a, b) => b.closedAt - a.closedAt);
   }, [openTrades, paperTrades]);
 
-  /* ============ Filter ============ */
   const filtered = useMemo(() => {
     const now = Date.now();
     const day = 24 * 60 * 60 * 1000;
 
     let list = allTrades;
 
-    /* By source */
     if (source === 'real') list = list.filter((t) => t.source === 'real');
     if (source === 'paper') list = list.filter((t) => t.source === 'paper');
 
-    /* By period */
     if (period === 'today') {
       const start = new Date();
       start.setHours(0, 0, 0, 0);
@@ -104,7 +90,6 @@ export default function Reports() {
     return list;
   }, [allTrades, source, period]);
 
-  /* ============ Stats ============ */
   const stats = useMemo(() => {
     const closed = filtered.filter((t) => t.status !== 'open');
     const totalPL = closed.reduce((s, t) => s + t.profit, 0);
@@ -112,10 +97,8 @@ export default function Reports() {
     const losses = closed.filter((t) => t.status === 'lost').length;
     const winRate = closed.length > 0 ? (wins / closed.length) * 100 : 0;
     const totalStake = closed.reduce((s, t) => s + t.stake, 0);
-    const best =
-      closed.length > 0 ? Math.max(...closed.map((t) => t.profit)) : 0;
-    const worst =
-      closed.length > 0 ? Math.min(...closed.map((t) => t.profit)) : 0;
+    const best = closed.length > 0 ? Math.max(...closed.map((t) => t.profit)) : 0;
+    const worst = closed.length > 0 ? Math.min(...closed.map((t) => t.profit)) : 0;
 
     return {
       totalPL,
@@ -287,7 +270,6 @@ export default function Reports() {
                       key={t.id}
                       className="grid grid-cols-7 gap-2 px-4 py-3 text-sm hover:bg-gray-50 items-center"
                     >
-                      {/* Source badge */}
                       <div>
                         {t.source === 'real' ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
@@ -337,7 +319,6 @@ export default function Reports() {
             )}
           </div>
 
-          {/* Helper text */}
           {!authorized && (
             <p className="text-center text-xs text-gray-400 mt-4">
               Log in to also see your real Deriv trades here.
@@ -350,7 +331,6 @@ export default function Reports() {
         </div>
       )}
 
-      {/* AI floating button */}
       <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
         AI
       </button>
@@ -395,9 +375,7 @@ function StatBox({
         custom
       ) : (
         <>
-          <div className={`text-lg font-semibold ${valueColor}`}>
-            {value}
-          </div>
+          <div className={`text-lg font-semibold ${valueColor}`}>{value}</div>
           {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
         </>
       )}
