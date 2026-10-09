@@ -379,11 +379,18 @@ export default function BotBuilder() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-hidden">
+    <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-visible">
+      {/* Mobile report — fixed, BELOW the header z-index so nav is tappable */}
       {mobileReportOpen && (
-        <div className="md:hidden absolute inset-0 bg-white z-[1001] flex flex-col">{renderMobileReport()}</div>
+        <div className="md:hidden fixed inset-0 top-14 bg-white z-20 flex flex-col">
+          {renderMobileReport()}
+        </div>
       )}
-      <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-200 bg-white flex-col">{renderSidebar()}</aside>
+
+      <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-200 bg-white flex-col">
+        {renderSidebar()}
+      </aside>
+
       <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
           <button className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Blocks menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
@@ -400,6 +407,7 @@ export default function BotBuilder() {
             {savedFlash ? <span className="text-green-600 font-medium">✓ saved</span> : lastSavedAt ? <span className="text-gray-400">{formatAgo(lastSavedAt)}</span> : <span className="text-gray-300">auto-save on</span>}
           </div>
         </div>
+
         <div className="flex-1 overflow-auto p-3 md:p-6 relative pb-24 md:pb-40">
           {blocks.map((b, i) => (
             <BlockRenderer key={b.id} block={b} index={i + 1} onToggle={() => toggleBlock(b.id)} onDelete={() => removeBlock(b.id)} onUpdate={(patch) => updateBlock(b.id, patch)} />
@@ -407,11 +415,16 @@ export default function BotBuilder() {
           <button className="absolute bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center">AI</button>
         </div>
       </main>
-      <aside className="hidden md:flex w-80 shrink-0 border-l border-gray-200 bg-white flex-col">{renderRightPanel()}</aside>
+
+      <aside className="hidden md:flex w-80 shrink-0 border-l border-gray-200 bg-white flex-col">
+        {renderRightPanel()}
+      </aside>
+
+      {/* Mobile Blocks menu drawer — sits BELOW the header */}
       {mobileMenuOpen && (
         <>
-          <div className="fixed inset-0 bg-black/50 z-[1000] md:hidden" onClick={() => setMobileMenuOpen(false)} />
-          <aside className="fixed top-0 left-0 bottom-0 w-[85%] max-w-[340px] bg-white z-[1001] flex flex-col shadow-2xl md:hidden">
+          <div className="fixed inset-0 top-14 bg-black/50 z-20 md:hidden" onClick={() => setMobileMenuOpen(false)} />
+          <aside className="fixed top-14 left-0 bottom-0 w-[85%] max-w-[340px] bg-white z-30 flex flex-col shadow-2xl md:hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
               <span className="font-semibold text-navy">Blocks menu</span>
               <button onClick={() => setMobileMenuOpen(false)} className="text-gray-400 text-2xl leading-none">×</button>
@@ -420,6 +433,7 @@ export default function BotBuilder() {
           </aside>
         </>
       )}
+
       <QuickStrategyModal open={showQuickStrategy} onClose={() => setShowQuickStrategy(false)} onSelect={applyPreset} />
     </div>
   );
