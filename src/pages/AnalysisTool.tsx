@@ -68,7 +68,7 @@ export default function AnalysisTool() {
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
-      {/* Sub-tabs */}
+      {/* Sub-tabs — wrap on mobile */}
       <div className="flex flex-wrap gap-1 mb-4 border-b border-gray-200 pb-2">
         {SUB_TABS.map((t) => (
           <button
@@ -94,7 +94,7 @@ export default function AnalysisTool() {
       ) : (
         <>
           {/* Top controls */}
-          <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
             <div className="flex gap-2">
               <button className="bg-red-500/80 hover:bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded">
                 Wide Eye
@@ -201,7 +201,7 @@ export default function AnalysisTool() {
             {digits.length}/{ticksWindow}
           </div>
 
-          {/* Even/Odd */}
+          {/* Even/Odd — stack on mobile */}
           <SectionLabel>Even/Odd</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             <BarColumn
@@ -218,7 +218,7 @@ export default function AnalysisTool() {
             />
           </div>
 
-          {/* Recent E/O chips */}
+          {/* Recent E/O chips — wrap */}
           <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-xs text-gray-500">Recent E/O</span>
             <div className="flex gap-1 flex-wrap">
@@ -238,8 +238,8 @@ export default function AnalysisTool() {
             </span>
           </div>
 
-          {/* Over/Under */}
-          <div className="mb-2 flex items-center gap-2">
+          {/* Over/Under — dropdown row (wrap on mobile) */}
+          <div className="mb-2 flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Over/Under:</span>
             <select
               value={overUnder}
@@ -254,6 +254,7 @@ export default function AnalysisTool() {
             </select>
           </div>
 
+          {/* Under/Equal/Over — stack on mobile */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
             <BarColumn
               label="Under"
@@ -275,7 +276,7 @@ export default function AnalysisTool() {
             />
           </div>
 
-          {/* Recent U/O chips */}
+          {/* Recent U/O chips — wrap */}
           <div className="flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-xs text-gray-500">Recent U/O</span>
             <div className="flex gap-1 flex-wrap">
@@ -299,7 +300,7 @@ export default function AnalysisTool() {
             </span>
           </div>
 
-          {/* Matches/Differs */}
+          {/* Matches/Differs — stack on mobile */}
           <SectionLabel>Matches/Differs</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
             <BarColumn
