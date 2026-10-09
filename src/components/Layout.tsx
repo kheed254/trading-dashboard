@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws';
+import { useBotStatus } from '../lib/bot-status';
 
 /* ---------- Inline SVG icons ---------- */
 const IconDashboard = () => (
@@ -51,7 +52,6 @@ const IconCopyTrading = () => (
   </svg>
 );
 
-/* ---------- Demo badge ---------- */
 const DemoBadge = ({ size = 28 }: { size?: number }) => (
   <span
     className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0"
@@ -103,9 +103,7 @@ export default function Layout() {
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
   const { authorized, user, switchAccount } = useAuthWs();
-
-  /* Hide bottom dock on Bot Builder — that page has its own controls */
-  const isBotBuilder = location.pathname === '/bot_builder';
+  const { status: botStatus } = useBotStatus();
 
   const tab: 'real' | 'demo' =
     activeTab ?? (user?.isVirtual ? 'demo' : 'real');
@@ -135,7 +133,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-navy text-white sticky top-0 z-40">
-        {/* ── TOP ROW: logo + balance + (hamburger gone on desktop) ── */}
+        {/* Top row */}
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <NavLink
@@ -145,7 +143,6 @@ export default function Layout() {
               Stinger<span className="text-brand-teal">FX</span>
             </NavLink>
 
-            {/* V100 ticker */}
             <div
               className="hidden lg:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
               title="Volatility 100 (1s) Index — live"
@@ -165,7 +162,6 @@ export default function Layout() {
           <div className="flex items-center gap-2 shrink-0">
             {authorized && user ? (
               <div className="relative">
-                {/* Balance pill */}
                 <button
                   onClick={() => setAccountOpen((o) => !o)}
                   className="flex items-center gap-2 bg-white hover:bg-gray-50 px-2 py-1 rounded-full text-sm transition shadow-sm border border-gray-100"
@@ -202,7 +198,6 @@ export default function Layout() {
                       onClick={() => setAccountOpen(false)}
                     />
                     <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[300px] sm:w-[340px] z-[1000] overflow-hidden">
-                      {/* Real/Demo tabs */}
                       <div className="flex border-b border-gray-200">
                         {(['real', 'demo'] as const).map((t) => (
                           <button
@@ -335,7 +330,7 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* ── SECOND ROW: swipeable tabs (visible on all screens) ── */}
+        {/* Swipeable tab row */}
         <nav className="bg-navy border-t border-white/5 px-2 overflow-x-auto whitespace-nowrap tab-scroll">
           <div className="flex items-center gap-0.5 text-[13px] min-w-max px-2">
             {navItems.map((item) => (
@@ -357,50 +352,66 @@ export default function Layout() {
           </div>
         </nav>
 
-        {/* Hide the scrollbar on the tab strip */}
         <style>{`
           .tab-scroll::-webkit-scrollbar { display: none; }
           .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
         `}</style>
       </header>
 
-      {/* ── PAGE CONTENT ── add bottom padding so the dock doesn't hide content */}
-      <div className={isBotBuilder ? '' : 'pb-20 md:pb-0'}>
+      {/* Page content with bottom padding for the dock */}
+      <div className="pb-16 md:pb-0">
         <Outlet />
       </div>
 
-      {/* ── BOTTOM DOCK (mobile only, hidden on Bot Builder) ── */}
-      {!isBotBuilder && (
-        <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-30">
-          <div className="flex items-center gap-2 px-3 py-2">
-            <button
-              onClick={() => navigate('/bot_builder')}
-              className="bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0"
-            >
-              <span className="text-xs">▶</span>
-              Run
-            </button>
-            <div className="flex-1">
-              <div className="text-[10px] text-white/60 mb-0.5">
-                Bot is not running
-              </div>
-              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-teal-500 w-0" />
-              </div>
-            </div>
-            <button
-              onClick={() =>
-                alert(
-                  'Bot status: idle. Open Bot Builder to start a bot.'
-                )
+      {/* ============ BOTTOM DOCK (mobile) ============ */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-30">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <button
+            onClick={() => {
+              if (location.pathname !== '/bot_builder') {
+                navigate('/bot_builder');
+              } else {
+                /* On Bot Builder — dispatch a run toggle via custom event
+                   that the page listens for */
+                window.dispatchEvent(new CustomEvent('sfx-toggle-run'));
               }
-              className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
-            >
-              i
-            </button>
+            }}
+            className={`${
+              botStatus.running
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-teal-500 hover:bg-teal-600'
+            } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
+          >
+            <span className="text-xs">
+              {botStatus.running ? '■' : '▶'}
+            </span>
+            {botStatus.running ? 'Stop' : 'Run'}
+          </button>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] text-white/60 mb-0.5 truncate">
+              {botStatus.statusText}
+            </div>
+            <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-teal-500 transition-all"
+                style={{ width: `${botStatus.progress}%` }}
+              />
+            </div>
           </div>
+          <button
+            onClick={() =>
+              alert(
+                botStatus.running
+                  ? 'Bot is currently running. Tap Stop to pause.'
+                  : 'Bot is idle. Tap Run to start trading.'
+              )
+            }
+            className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
+          >
+            i
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
