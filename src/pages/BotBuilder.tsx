@@ -367,20 +367,44 @@ export default function BotBuilder() {
 
   const renderMobileReport = () => (
     <>
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-        <button onClick={() => setMobileReportOpen(false)} className="w-8 h-8 flex items-center justify-center text-gray-700" title="Back to canvas">
-          <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
+      {/* Single row: chevron centered, Reset on right, subtle status on left */}
+      <div className="relative flex items-center bg-white px-4 py-3 border-b border-gray-100">
+        <div className="text-xs text-gray-400 min-w-0">
+          {botRunning ? `${botStats.runs} runs` : ''}
+        </div>
+
+        <button
+          onClick={() => setMobileReportOpen(false)}
+          className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
+          title="Back to canvas"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            className="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
-        <div className="text-xs text-gray-500">{botRunning ? `Bot is running — ${botStats.runs} runs` : 'Bot is not running'}</div>
-        <button onClick={handleReset} className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700">Reset</button>
+
+        <button
+          onClick={handleReset}
+          className="ml-auto text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
+        >
+          Reset
+        </button>
       </div>
+
       <ReportBody {...reportProps} />
     </>
   );
 
   return (
     <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-visible">
-      {/* Mobile report — fixed, BELOW the header z-index so nav is tappable */}
       {mobileReportOpen && (
         <div className="md:hidden fixed inset-0 top-14 bg-white z-20 flex flex-col">
           {renderMobileReport()}
@@ -420,7 +444,6 @@ export default function BotBuilder() {
         {renderRightPanel()}
       </aside>
 
-      {/* Mobile Blocks menu drawer — sits BELOW the header */}
       {mobileMenuOpen && (
         <>
           <div className="fixed inset-0 top-14 bg-black/50 z-20 md:hidden" onClick={() => setMobileMenuOpen(false)} />
