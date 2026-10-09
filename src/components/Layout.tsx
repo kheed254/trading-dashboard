@@ -5,7 +5,7 @@ import { useTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws';
 import { useBotStatus } from '../lib/bot-status';
 
-/* ---------- Inline SVG icons ---------- */
+/* ---------- Icons ---------- */
 const IconDashboard = () => (
   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
     <path d="M3 3h8v8H3V3zm10 0h8v5h-8V3zM3 13h8v8H3v-8zm10 3h8v5h-8v-5z" />
@@ -53,19 +53,8 @@ const IconCopyTrading = () => (
 );
 
 const DemoBadge = ({ size = 28 }: { size?: number }) => (
-  <span
-    className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0"
-    style={{ width: size, height: size }}
-  >
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#ffffff"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ width: size * 0.6, height: size * 0.6 }}
-    >
+  <span className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0" style={{ width: size, height: size }}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: size * 0.6, height: size * 0.6 }}>
       <path d="M7 5 L7 19" />
       <path d="M7 5 L14 5 Q20 5 20 12 Q20 19 14 19 L7 19" />
       <path d="M11 8 L11 16" />
@@ -87,11 +76,8 @@ const navItems = [
   { label: 'Copy Trading', to: '/copy_trading', Icon: IconCopyTrading },
 ];
 
-function fmtMoney(n: number): string {
-  return n.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+function fmtMoney(n: number) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function Layout() {
@@ -105,16 +91,10 @@ export default function Layout() {
   const { authorized, user, switchAccount } = useAuthWs();
   const { status: botStatus } = useBotStatus();
 
-  const tab: 'real' | 'demo' =
-    activeTab ?? (user?.isVirtual ? 'demo' : 'real');
-
+  const tab: 'real' | 'demo' = activeTab ?? (user?.isVirtual ? 'demo' : 'real');
   const tabAccount = user?.accounts.find((a) => a.account_type === tab);
-
   const pillBalance =
-    user && (tab === 'demo') === user.isVirtual
-      ? user.balance
-      : tabAccount?.balance ?? 0;
-
+    user && (tab === 'demo') === user.isVirtual ? user.balance : tabAccount?.balance ?? 0;
   const pillCurrency = tabAccount?.currency || user?.currency || 'USD';
 
   const handleLogout = () => {
@@ -130,16 +110,15 @@ export default function Layout() {
     }
   };
 
+  const isBotBuilder = location.pathname === '/bot_builder';
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-navy text-white sticky top-0 z-40">
-        {/* Top row */}
+      <header className="bg-navy text-white sticky top-0 z-30">
+        {/* ===== TOP ROW ===== */}
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <NavLink
-              to="/"
-              className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0"
-            >
+            <NavLink to="/" className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0">
               Stinger<span className="text-brand-teal">FX</span>
             </NavLink>
 
@@ -168,11 +147,7 @@ export default function Layout() {
                 >
                   {tab === 'real' ? (
                     <span className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
-                      <img
-                        src="https://flagcdn.com/w80/us.png"
-                        alt="USD"
-                        className="w-full h-full object-cover"
-                      />
+                      <img src="https://flagcdn.com/w80/us.png" alt="USD" className="w-full h-full object-cover" />
                     </span>
                   ) : (
                     <DemoBadge size={28} />
@@ -180,117 +155,69 @@ export default function Layout() {
                   <span className="font-mono font-bold text-brand-teal tabular-nums text-xs sm:text-sm">
                     {fmtMoney(pillBalance)} {pillCurrency}
                   </span>
-                  <svg
-                    viewBox="0 0 24 24"
-                    className={`w-4 h-4 text-navy transition-transform ${
-                      accountOpen ? 'rotate-180' : ''
-                    }`}
-                    fill="currentColor"
-                  >
+                  <svg viewBox="0 0 24 24" className={`w-4 h-4 text-navy transition-transform ${accountOpen ? 'rotate-180' : ''}`} fill="currentColor">
                     <path d="M7 10l5 5 5-5z" />
                   </svg>
                 </button>
 
                 {accountOpen && (
                   <>
-                    <div
-                      className="fixed inset-0 z-[999]"
-                      onClick={() => setAccountOpen(false)}
-                    />
-                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[300px] sm:w-[340px] z-[1000] overflow-hidden">
+                    <div className="fixed inset-0 z-[45]" onClick={() => setAccountOpen(false)} />
+                    <div className="absolute right-0 top-[calc(100%+8px)] bg-white text-navy rounded-xl shadow-2xl w-[300px] sm:w-[340px] z-[50] overflow-hidden">
                       <div className="flex border-b border-gray-200">
                         {(['real', 'demo'] as const).map((t) => (
                           <button
                             key={t}
                             onClick={() => handleTabClick(t)}
                             className={`flex-1 py-3 text-sm font-medium transition ${
-                              tab === t
-                                ? 'border-b-2 border-red-500 text-navy font-semibold'
-                                : 'text-gray-500 hover:bg-gray-50'
+                              tab === t ? 'border-b-2 border-red-500 text-navy font-semibold' : 'text-gray-500 hover:bg-gray-50'
                             }`}
                           >
                             {t === 'real' ? 'Real' : 'Demo'}
                           </button>
                         ))}
                       </div>
-
                       <div>
                         <button
                           onClick={() => setAccountsExpanded((x) => !x)}
                           className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
                         >
-                          <span>
-                            Deriv account{tab === 'demo' ? '' : 's'}
-                          </span>
-                          <svg
-                            viewBox="0 0 24 24"
-                            className={`w-4 h-4 transition-transform ${
-                              accountsExpanded ? 'rotate-180' : ''
-                            }`}
-                            fill="currentColor"
-                          >
+                          <span>Deriv account{tab === 'demo' ? '' : 's'}</span>
+                          <svg viewBox="0 0 24 24" className={`w-4 h-4 transition-transform ${accountsExpanded ? 'rotate-180' : ''}`} fill="currentColor">
                             <path d="M7 10l5 5 5-5z" />
                           </svg>
                         </button>
-
                         {accountsExpanded && (
                           <div className="px-3 pb-3">
                             {tabAccount ? (
-                              <div
-                                className={`w-full flex items-center justify-between px-3 py-3 rounded-lg transition ${
-                                  tabAccount.account_id ===
-                                  user.activeAccountId
-                                    ? 'bg-gray-100'
-                                    : 'hover:bg-gray-50'
-                                }`}
-                              >
+                              <div className={`w-full flex items-center justify-between px-3 py-3 rounded-lg ${tabAccount.account_id === user.activeAccountId ? 'bg-gray-100' : ''}`}>
                                 <div className="flex items-center gap-2.5">
                                   {tabAccount.account_type === 'real' ? (
                                     <span className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-gray-200">
-                                      <img
-                                        src="https://flagcdn.com/w80/us.png"
-                                        alt="USD"
-                                        className="w-full h-full object-cover"
-                                      />
+                                      <img src="https://flagcdn.com/w80/us.png" alt="USD" className="w-full h-full object-cover" />
                                     </span>
                                   ) : (
                                     <DemoBadge size={32} />
                                   )}
                                   <div>
                                     <div className="text-sm font-semibold text-navy">
-                                      {tabAccount.account_type === 'real'
-                                        ? tabAccount.currency
-                                        : 'Demo'}
+                                      {tabAccount.account_type === 'real' ? tabAccount.currency : 'Demo'}
                                     </div>
                                     <div className="text-[10px] text-gray-400 font-mono">
-                                      {tabAccount.loginid ||
-                                        tabAccount.account_id}
+                                      {tabAccount.loginid || tabAccount.account_id}
                                     </div>
                                   </div>
                                 </div>
                                 <div className="text-sm font-mono font-semibold text-navy">
-                                  {fmtMoney(
-                                    tabAccount.account_id ===
-                                      user.activeAccountId
-                                      ? user.balance
-                                      : tabAccount.balance
-                                  )}{' '}
-                                  {tabAccount.currency}
+                                  {fmtMoney(tabAccount.account_id === user.activeAccountId ? user.balance : tabAccount.balance)} {tabAccount.currency}
                                 </div>
                               </div>
                             ) : (
-                              <div className="text-center text-xs text-gray-400 py-4">
-                                No {tab} account on this profile.
-                              </div>
+                              <div className="text-center text-xs text-gray-400 py-4">No {tab} account on this profile.</div>
                             )}
-
                             {tab === 'demo' && tabAccount && (
                               <button
-                                onClick={() =>
-                                  alert(
-                                    'To reset your demo balance, please visit your Deriv dashboard.'
-                                  )
-                                }
+                                onClick={() => alert('Reset from your Deriv dashboard.')}
                                 className="w-full mt-2 border border-gray-300 hover:bg-gray-50 rounded-lg py-2 text-xs font-medium text-gray-600"
                               >
                                 Reset balance
@@ -299,7 +226,6 @@ export default function Layout() {
                           </div>
                         )}
                       </div>
-
                       <button
                         onClick={handleLogout}
                         className="w-full text-left px-4 py-3 text-sm text-gray-600 hover:bg-gray-50 border-t border-gray-100 font-medium flex items-center justify-between"
@@ -330,25 +256,26 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Swipeable tab row */}
-        <nav className="bg-navy border-t border-white/5 px-2 overflow-x-auto whitespace-nowrap tab-scroll">
-          <div className="flex items-center gap-0.5 text-[13px] min-w-max px-2">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `px-3 py-3 transition whitespace-nowrap flex items-center gap-1.5 ${
-                    isActive
-                      ? 'border-b-2 border-red-500 font-medium text-white'
-                      : 'text-white/80 hover:text-brand-teal'
-                  }`
-                }
-              >
-                <item.Icon />
-                {item.label}
-              </NavLink>
-            ))}
+        {/* ===== SECOND ROW — swipeable tabs ===== */}
+        <nav className="bg-navy border-t border-white/5">
+          <div className="overflow-x-auto tab-scroll">
+            <div className="flex items-center gap-0.5 text-[13px] px-2">
+              {navItems.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/dashboard'}
+                  className={({ isActive }) =>
+                    `px-3 py-3 whitespace-nowrap flex items-center gap-1.5 transition ${
+                      isActive ? 'border-b-2 border-red-500 text-white font-medium' : 'text-white/80 hover:text-brand-teal'
+                    }`
+                  }
+                >
+                  <item.Icon />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           </div>
         </nav>
 
@@ -358,60 +285,39 @@ export default function Layout() {
         `}</style>
       </header>
 
-      {/* Page content with bottom padding for the dock */}
-      <div className="pb-16 md:pb-0">
+      {/* PAGE CONTENT */}
+      <div className={isBotBuilder ? '' : 'pb-20 md:pb-0'}>
         <Outlet />
       </div>
 
-      {/* ============ BOTTOM DOCK (mobile) ============ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-30">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button
-            onClick={() => {
-              if (location.pathname !== '/bot_builder') {
-                navigate('/bot_builder');
-              } else {
-                /* On Bot Builder — dispatch a run toggle via custom event
-                   that the page listens for */
-                window.dispatchEvent(new CustomEvent('sfx-toggle-run'));
-              }
-            }}
-            className={`${
-              botStatus.running
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-teal-500 hover:bg-teal-600'
-            } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
-          >
-            <span className="text-xs">
-              {botStatus.running ? '■' : '▶'}
-            </span>
-            {botStatus.running ? 'Stop' : 'Run'}
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-white/60 mb-0.5 truncate">
-              {botStatus.statusText}
+      {/* ===== BOTTOM DOCK (mobile) ===== */}
+      {!isBotBuilder && (
+        <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
+          <div className="flex items-center gap-2 px-3 py-2">
+            <button
+              onClick={() => navigate('/bot_builder')}
+              className={`${
+                botStatus.running ? 'bg-red-500 hover:bg-red-600' : 'bg-teal-500 hover:bg-teal-600'
+              } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
+            >
+              <span className="text-xs">{botStatus.running ? '■' : '▶'}</span>
+              {botStatus.running ? 'Stop' : 'Run'}
+            </button>
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] text-white/60 mb-0.5 truncate">{botStatus.statusText}</div>
+              <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all" style={{ width: `${botStatus.progress}%` }} />
+              </div>
             </div>
-            <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-teal-500 transition-all"
-                style={{ width: `${botStatus.progress}%` }}
-              />
-            </div>
+            <button
+              onClick={() => alert(botStatus.running ? 'Bot is running.' : 'Bot is idle. Tap Run to start.')}
+              className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
+            >
+              i
+            </button>
           </div>
-          <button
-            onClick={() =>
-              alert(
-                botStatus.running
-                  ? 'Bot is currently running. Tap Stop to pause.'
-                  : 'Bot is idle. Tap Run to start trading.'
-              )
-            }
-            className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
-          >
-            i
-          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
