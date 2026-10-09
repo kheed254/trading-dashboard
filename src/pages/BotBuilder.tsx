@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
 import { useAuthWs } from '../lib/auth-ws';
+import { useBotStatus } from '../lib/bot-status';
 
 /* ---------- Option lists ---------- */
 const MARKETS = [
@@ -186,6 +187,7 @@ export default function BotBuilder() {
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
+  const { setBotStatus, clearBotStatus } = useBotStatus();
 
   const [botRunning, setBotRunning] = useState(false);
   const botRunningRef = useRef(false);
@@ -236,6 +238,22 @@ export default function BotBuilder() {
     botRunningRef.current = botRunning;
   }, [botRunning]);
 
+  /* ---- Broadcast bot status to shared context ---- */
+  useEffect(() => {
+    setBotStatus({
+      owner: 'bot_builder',
+      running: botRunning,
+      statusText: botRunning
+        ? `Bot is running — ${botStats.runs} runs`
+        : 'Bot is not running',
+      progress: botRunning ? 65 : 0,
+    });
+  }, [botRunning, botStats.runs, setBotStatus]);
+
+  useEffect(() => {
+    return () => clearBotStatus('bot_builder');
+  }, [clearBotStatus]);
+
   /* Watch closed contracts */
   useEffect(() => {
     if (!openTrades.length) return;
@@ -256,7 +274,6 @@ export default function BotBuilder() {
           pl: +(prev.pl + t.profit).toFixed(2),
         }));
 
-        /* Martingale */
         if (won) {
           consecutiveLossesRef.current = 0;
           setCurrentStake(baseStake);
@@ -282,7 +299,7 @@ export default function BotBuilder() {
 
         setActiveContractId(null);
 
-        /* ---- Take-profit check ---- */
+        /* Take-profit */
         const tp = getTakeProfit();
         setBotStats((prev) => {
           if (tp > 0 && prev.pl >= tp) {
@@ -297,7 +314,7 @@ export default function BotBuilder() {
           return prev;
         });
 
-        /* ---- Stop-loss check ---- */
+        /* Stop-loss */
         const sl = getStopLoss();
         setBotStats((prev) => {
           if (sl > 0 && sl < 900 && prev.pl <= -sl) {
@@ -746,9 +763,7 @@ export default function BotBuilder() {
                                 : 'bg-red-500'
                               : 'bg-teal-500 animate-pulse'
                           }`}
-                          style={{
-                            width: show.is_sold ? '100%' : '45%',
-                          }}
+                          style={{ width: show.is_sold ? '100%' : '45%' }}
                         />
                       </div>
 
@@ -785,8 +800,7 @@ export default function BotBuilder() {
                       {consecutiveLossesRef.current > 0 && (
                         <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2">
                           Martingale level {consecutiveLossesRef.current} —
-                          next stake $
-                          {currentStake?.toFixed(2) ?? '—'}
+                          next stake ${currentStake?.toFixed(2) ?? '—'}
                         </div>
                       )}
                     </>
@@ -1081,9 +1095,7 @@ function BlockRenderer({
                 <span className="text-gray-500 w-20">Duration:</span>
                 <select
                   value={block.durationType ?? 'Ticks'}
-                  onChange={(e) =>
-                    onUpdate({ durationType: e.target.value })
-                  }
+                  onChange={(e) => onUpdate({ durationType: e.target.value })}
                   className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer"
                 >
                   {DURATION_TYPES.map((d) => (
