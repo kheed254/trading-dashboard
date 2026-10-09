@@ -186,6 +186,10 @@ export default function BotBuilder() {
   const firstRun = useRef(true);
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
 
+  /* ---- Mobile overlay state ---- */
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileReportOpen, setMobileReportOpen] = useState(false);
+
   const { authorized, placeTrade, openTrades } = useAuthWs();
   const { setBotStatus, clearBotStatus } = useBotStatus();
 
@@ -238,7 +242,7 @@ export default function BotBuilder() {
     botRunningRef.current = botRunning;
   }, [botRunning]);
 
-  /* ---- Broadcast bot status to shared context ---- */
+  /* Broadcast to shared context */
   useEffect(() => {
     setBotStatus({
       owner: 'bot_builder',
@@ -253,6 +257,26 @@ export default function BotBuilder() {
   useEffect(() => {
     return () => clearBotStatus('bot_builder');
   }, [clearBotStatus]);
+
+  /* Listen for the mobile dock's toggle event */
+  useEffect(() => {
+    const handler = () => {
+      if (!authorized) {
+        alert('Please log in to run the bot.');
+        return;
+      }
+      const next = !botRunningRef.current;
+      if (next) {
+        consecutiveLossesRef.current = 0;
+        setCurrentStake(getBaseStake());
+      }
+      setBotRunning(next);
+      addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
+    };
+    window.addEventListener('sfx-toggle-run', handler);
+    return () => window.removeEventListener('sfx-toggle-run', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorized]);
 
   /* Watch closed contracts */
   useEffect(() => {
@@ -290,16 +314,15 @@ export default function BotBuilder() {
           addJournal(
             `✗ Lost -$${Math.abs(t.profit).toFixed(
               2
-            )} — Martingale lvl ${
-              consecutiveLossesRef.current
-            }, next $${nextStake.toFixed(2)}`,
+            )} — Martingale lvl ${consecutiveLossesRef.current}, next $${nextStake.toFixed(
+              2
+            )}`,
             'loss'
           );
         }
 
         setActiveContractId(null);
 
-        /* Take-profit */
         const tp = getTakeProfit();
         setBotStats((prev) => {
           if (tp > 0 && prev.pl >= tp) {
@@ -314,7 +337,6 @@ export default function BotBuilder() {
           return prev;
         });
 
-        /* Stop-loss */
         const sl = getStopLoss();
         setBotStats((prev) => {
           if (sl > 0 && sl < 900 && prev.pl <= -sl) {
@@ -361,8 +383,10 @@ export default function BotBuilder() {
     return isNaN(val) || val <= 0 ? 0.35 : val;
   };
 
-  const addBlock = (type: BlockType) =>
+  const addBlock = (type: BlockType) => {
     setBlocks((bs) => [...bs, createBlock(type)]);
+    setMobileMenuOpen(false);
+  };
   const removeBlock = (id: string) =>
     setBlocks((bs) => bs.filter((b) => b.id !== id));
   const toggleBlock = (id: string) =>
@@ -508,67 +532,383 @@ export default function BotBuilder() {
     addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
   };
 
-  /* ---------- render ---------- */
-  return (
-    <div className="flex h-[calc(100vh-56px)] overflow-hidden">
-      {/* LEFT SIDEBAR */}
-      <aside className="w-64 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <button
-          onClick={() => setShowQuickStrategy(true)}
-          className="m-3 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm"
-        >
-          Quick strategy
+  /* ---------- Render helpers ---------- */
+  const renderSidebar = () => (
+    <>
+      <button
+        onClick={() => {
+          setShowQuickStrategy(true);
+          setMobileMenuOpen(false);
+        }}
+        className="m-3 py-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm"
+      >
+        Quick strategy
+      </button>
+
+      <div className="px-4 py-2 text-sm font-semibold text-navy flex items-center justify-between border-b border-gray-100">
+        Blocks menu
+        <span className="text-gray-400">▲</span>
+      </div>
+
+      <div className="p-3 border-b border-gray-100">
+        <input
+          type="text"
+          placeholder="🔍  Search"
+          className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md outline-none focus:border-blue-500"
+        />
+      </div>
+
+      <nav className="flex-1 overflow-y-auto text-sm">
+        {(
+          [
+            ['trade_params', 'Trade parameters'],
+            ['purchase', 'Purchase conditions'],
+            ['sell', 'Sell conditions (optional)'],
+            ['restart', 'Restart trading conditions'],
+          ] as [BlockType, string][]
+        ).map(([type, label]) => (
+          <button
+            key={type}
+            onClick={() => addBlock(type)}
+            className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-blue-50 text-gray-700 flex items-center justify-between group"
+          >
+            <span>{label}</span>
+            <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition text-lg leading-none">
+              +
+            </span>
+          </button>
+        ))}
+        <button className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 text-gray-700 flex justify-between items-center">
+          Analysis <span className="text-gray-400">∨</span>
         </button>
+        <button className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 text-gray-700 flex justify-between items-center">
+          Utility <span className="text-gray-400">∨</span>
+        </button>
+      </nav>
 
-        <div className="px-4 py-2 text-sm font-semibold text-navy flex items-center justify-between border-b border-gray-100">
-          Blocks menu
-          <span className="text-gray-400">▲</span>
+      <div className="p-3 text-xs text-gray-400 border-t border-gray-100">
+        Click a block to add it to the canvas
+      </div>
+    </>
+  );
+
+  const renderRightPanel = () => (
+    <>
+      <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
+        <button
+          onClick={toggleRun}
+          className={`${
+            botRunning
+              ? 'bg-red-500 hover:bg-red-600'
+              : 'bg-teal-500 hover:bg-teal-600'
+          } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0 flex items-center gap-1.5`}
+        >
+          {botRunning ? (
+            <>
+              <span className="w-3 h-3 bg-white/40 rounded-sm" />
+              Stop
+            </>
+          ) : (
+            <>▶ Run</>
+          )}
+        </button>
+        <div className="flex-1 text-xs text-gray-500">
+          {botRunning ? (
+            <>
+              <div className="flex justify-between mb-1">
+                <span>Bot is running…</span>
+                <span>72%</span>
+              </div>
+              <div className="h-1 bg-gray-100 rounded overflow-hidden">
+                <div
+                  className="h-full bg-teal-500 transition-all"
+                  style={{ width: '72%' }}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between">
+              <span>Bot is not running</span>
+              <span>0% complete</span>
+            </div>
+          )}
         </div>
+      </div>
 
-        <div className="p-3 border-b border-gray-100">
-          <input
-            type="text"
-            placeholder="🔍  Search"
-            className="w-full text-sm px-3 py-2 border border-gray-200 rounded-md outline-none focus:border-blue-500"
-          />
-        </div>
-
-        <nav className="flex-1 overflow-y-auto text-sm">
-          {(
-            [
-              ['trade_params', 'Trade parameters'],
-              ['purchase', 'Purchase conditions'],
-              ['sell', 'Sell conditions (optional)'],
-              ['restart', 'Restart trading conditions'],
-            ] as [BlockType, string][]
-          ).map(([type, label]) => (
-            <button
-              key={type}
-              onClick={() => addBlock(type)}
-              className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-blue-50 text-gray-700 flex items-center justify-between group"
-            >
-              <span>{label}</span>
-              <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition text-lg leading-none">
-                +
-              </span>
-            </button>
-          ))}
-          <button className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 text-gray-700 flex justify-between items-center">
-            Analysis <span className="text-gray-400">∨</span>
+      <div className="flex border-b border-gray-200 text-sm">
+        {(['summary', 'transactions', 'journal'] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => setDetailTab(k)}
+            className={`flex-1 py-2.5 capitalize text-center text-sm ${
+              detailTab === k
+                ? 'border-b-2 border-blue-600 text-blue-600 font-semibold'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            {k === 'summary'
+              ? 'Summary'
+              : k === 'transactions'
+              ? 'Transactions'
+              : 'Journal'}
           </button>
-          <button className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 text-gray-700 flex justify-between items-center">
-            Utility <span className="text-gray-400">∨</span>
-          </button>
-        </nav>
+        ))}
+      </div>
 
-        <div className="p-3 text-xs text-gray-400 border-t border-gray-100">
-          Click a block to add it to the canvas
-        </div>
+      <div className="flex-1 overflow-y-auto">
+        {detailTab === 'summary' &&
+          (() => {
+            const active = openTrades.find(
+              (t) => t.contract_id === activeContractId && !t.is_sold
+            );
+            const last = openTrades[0];
+            const show = active || last;
+
+            return (
+              <div className="p-4">
+                {!show ? (
+                  <div className="flex flex-col items-center justify-center text-center text-gray-400 text-xs h-full py-12">
+                    {botRunning ? (
+                      <>
+                        <div className="text-navy text-sm font-semibold mb-2">
+                          Placing first trade…
+                        </div>
+                        <div>Waiting for market data</div>
+                      </>
+                    ) : (
+                      <>
+                        When you're ready to trade, hit{' '}
+                        <span className="font-semibold">Run</span>.
+                        <br />
+                        You'll be able to track your bot's performance here.
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs text-gray-500">
+                        {show.symbol}
+                      </div>
+                      <div
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          show.is_sold
+                            ? show.profit > 0
+                              ? 'bg-green-50 text-green-700'
+                              : 'bg-red-50 text-red-700'
+                            : 'bg-teal-50 text-teal-700'
+                        }`}
+                      >
+                        {show.is_sold
+                          ? show.profit > 0
+                            ? 'WON'
+                            : 'LOST'
+                          : 'LIVE'}
+                      </div>
+                    </div>
+
+                    <div className="text-sm font-semibold text-navy mb-3">
+                      {show.contract_type}
+                    </div>
+
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+                      <div
+                        className={`h-full transition-all ${
+                          show.is_sold
+                            ? show.profit > 0
+                              ? 'bg-green-500'
+                              : 'bg-red-500'
+                            : 'bg-teal-500 animate-pulse'
+                        }`}
+                        style={{ width: show.is_sold ? '100%' : '45%' }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 text-xs mb-4">
+                      <div>
+                        <div className="text-gray-500">Stake</div>
+                        <div className="font-mono font-semibold text-navy mt-0.5">
+                          {show.buy_price.toFixed(2)} USD
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-gray-500">
+                          {show.is_sold ? 'Profit' : 'Payout'}
+                        </div>
+                        <div
+                          className={`font-mono font-semibold mt-0.5 ${
+                            show.is_sold
+                              ? show.profit >= 0
+                                ? 'text-green-600'
+                                : 'text-red-600'
+                              : 'text-navy'
+                          }`}
+                        >
+                          {show.is_sold
+                            ? `${show.profit >= 0 ? '+' : ''}${show.profit.toFixed(
+                                2
+                              )}`
+                            : show.payout.toFixed(2)}{' '}
+                          USD
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
+
+        {detailTab === 'transactions' && (
+          <div>
+            <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 py-2 text-[10px] text-gray-500 font-medium border-b border-gray-100">
+              <div>Type</div>
+              <div>Entry/Exit</div>
+              <div className="text-right">Buy / P&L</div>
+            </div>
+
+            {openTrades.length === 0 ? (
+              <div className="text-center text-gray-400 text-xs py-10">
+                No transactions yet
+              </div>
+            ) : (
+              <div>
+                {openTrades.map((t) => {
+                  const won = t.is_sold && t.profit > 0;
+                  const lost = t.is_sold && t.profit <= 0;
+                  return (
+                    <div
+                      key={t.contract_id}
+                      className="border-b border-gray-100 py-2"
+                    >
+                      <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center">
+                        <span className="text-[11px] font-medium text-gray-700">
+                          {t.contract_type}
+                        </span>
+                        <span className="font-mono text-[11px] text-gray-700">
+                          {t.entry_spot || '—'}
+                        </span>
+                        <span className="text-right text-[11px] font-mono text-gray-700">
+                          {t.buy_price.toFixed(2)} USD
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center mt-1">
+                        <div />
+                        <span className="font-mono text-[11px] text-gray-700">
+                          {t.is_sold ? t.current_spot || '—' : '…'}
+                        </span>
+                        <span
+                          className={`text-right text-[11px] font-mono font-semibold ${
+                            won
+                              ? 'text-green-600'
+                              : lost
+                              ? 'text-red-600'
+                              : 'text-gray-400'
+                          }`}
+                        >
+                          {t.is_sold
+                            ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(
+                                2
+                              )}`
+                            : 'open'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {detailTab === 'journal' && (
+          <div className="p-3 text-xs">
+            {botJournal.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">
+                Journal empty
+              </div>
+            ) : (
+              botJournal.map((j, i) => (
+                <div
+                  key={i}
+                  className="border-b border-gray-50 py-2 last:border-0"
+                >
+                  <div className="text-[9px] text-gray-400 font-mono">
+                    {j.time}
+                  </div>
+                  <div
+                    className={`mt-0.5 ${
+                      j.kind === 'profit'
+                        ? 'text-green-600'
+                        : j.kind === 'loss'
+                        ? 'text-red-600'
+                        : j.kind === 'buy'
+                        ? 'text-navy'
+                        : 'text-gray-500'
+                    }`}
+                  >
+                    {j.text}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center">
+        <Stat
+          label="Total stake"
+          value={`${botStats.totalStake.toFixed(2)} USD`}
+        />
+        <Stat
+          label="Total payout"
+          value={`${botStats.totalPayout.toFixed(2)} USD`}
+        />
+        <Stat label="No. of runs" value={String(botStats.runs)} />
+        <Stat label="Contracts lost" value={String(botStats.losses)} />
+        <Stat label="Contracts won" value={String(botStats.wins)} />
+        <Stat
+          label="Total profit/loss"
+          value={`${botStats.pl.toFixed(2)} USD`}
+          highlight={
+            botStats.pl > 0 ? 'green' : botStats.pl < 0 ? 'red' : 'none'
+          }
+        />
+      </div>
+
+      <div className="p-3 border-t border-gray-200">
+        <button
+          onClick={handleReset}
+          className="w-full border border-gray-300 rounded py-2 text-sm hover:bg-gray-50"
+        >
+          Reset
+        </button>
+      </div>
+    </>
+  );
+
+  /* ---------- JSX ---------- */
+  return (
+    <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-hidden">
+      {/* ============ LEFT SIDEBAR (desktop only) ============ */}
+      <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-200 bg-white flex-col">
+        {renderSidebar()}
       </aside>
 
-      {/* CENTER CANVAS */}
+      {/* ============ CENTER CANVAS ============ */}
       <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
+        {/* Toolbar */}
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
+          {/* Mobile: hamburger to open Blocks menu */}
+          <button
+            className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            title="Blocks menu"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            ☰
+          </button>
+
           <button
             className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
             title="Reset blocks"
@@ -597,15 +937,27 @@ export default function BotBuilder() {
           >
             💾
           </button>
-          {['📋', '↶', '↷', '⊞', '⊟', '🔍', '🔎'].map((icon, i) => (
-            <button
-              key={i}
-              className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
-            >
-              {icon}
-            </button>
-          ))}
-          <div className="ml-auto text-xs">
+          <div className="hidden md:flex gap-1">
+            {['📋', '↶', '↷', '⊞', '⊟', '🔍', '🔎'].map((icon, i) => (
+              <button
+                key={i}
+                className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+
+          {/* Mobile: Report button */}
+          <button
+            className="md:hidden ml-auto w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
+            title="Report"
+            onClick={() => setMobileReportOpen(true)}
+          >
+            📊
+          </button>
+
+          <div className="hidden md:block ml-auto text-xs">
             {savedFlash ? (
               <span className="text-green-600 font-medium">✓ saved</span>
             ) : lastSavedAt ? (
@@ -616,7 +968,8 @@ export default function BotBuilder() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-6 relative pb-40">
+        {/* Canvas */}
+        <div className="flex-1 overflow-auto p-3 md:p-6 relative pb-24 md:pb-40">
           {blocks.map((b, i) => (
             <BlockRenderer
               key={b.id}
@@ -628,352 +981,64 @@ export default function BotBuilder() {
             />
           ))}
 
-          <button className="absolute bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
+          <button className="absolute bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center">
             AI
           </button>
         </div>
       </main>
 
-      {/* RIGHT PANEL */}
-      <aside className="w-80 shrink-0 border-l border-gray-200 bg-white flex flex-col">
-        <div className="flex items-center gap-2 px-3 py-3 border-b border-gray-200">
-          <button
-            onClick={toggleRun}
-            className={`${
-              botRunning
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-teal-500 hover:bg-teal-600'
-            } text-white text-sm font-semibold px-4 py-1.5 rounded transition shrink-0 flex items-center gap-1.5`}
-          >
-            {botRunning ? (
-              <>
-                <span className="w-3 h-3 bg-white/40 rounded-sm" />
-                Stop
-              </>
-            ) : (
-              <>▶ Run</>
-            )}
-          </button>
-          <div className="flex-1 text-xs text-gray-500">
-            {botRunning ? (
-              <>
-                <div className="flex justify-between mb-1">
-                  <span>Bot is running…</span>
-                  <span>72%</span>
-                </div>
-                <div className="h-1 bg-gray-100 rounded overflow-hidden">
-                  <div
-                    className="h-full bg-teal-500 transition-all"
-                    style={{ width: '72%' }}
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="flex justify-between">
-                <span>Bot is not running</span>
-                <span>0% complete</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="flex border-b border-gray-200 text-sm">
-          {(['summary', 'transactions', 'journal'] as const).map((k) => (
-            <button
-              key={k}
-              onClick={() => setDetailTab(k)}
-              className={`flex-1 py-2.5 capitalize text-center text-sm ${
-                detailTab === k
-                  ? 'border-b-2 border-blue-600 text-blue-600 font-semibold'
-                  : 'text-gray-500 hover:text-gray-800'
-              }`}
-            >
-              {k === 'summary'
-                ? 'Summary'
-                : k === 'transactions'
-                ? 'Transactions'
-                : 'Journal'}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {detailTab === 'summary' &&
-            (() => {
-              const active = openTrades.find(
-                (t) => t.contract_id === activeContractId && !t.is_sold
-              );
-              const last = openTrades[0];
-              const show = active || last;
-
-              return (
-                <div className="p-4">
-                  {!show ? (
-                    <div className="flex flex-col items-center justify-center text-center text-gray-400 text-xs h-full py-12">
-                      {botRunning ? (
-                        <>
-                          <div className="text-navy text-sm font-semibold mb-2">
-                            Placing first trade…
-                          </div>
-                          <div>Waiting for market data</div>
-                        </>
-                      ) : (
-                        <>
-                          When you're ready to trade, hit{' '}
-                          <span className="font-semibold">Run</span>.
-                          <br />
-                          You'll be able to track your bot's performance
-                          here.
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-xs text-gray-500">
-                          {show.symbol}
-                        </div>
-                        <div
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            show.is_sold
-                              ? show.profit > 0
-                                ? 'bg-green-50 text-green-700'
-                                : 'bg-red-50 text-red-700'
-                              : 'bg-teal-50 text-teal-700'
-                          }`}
-                        >
-                          {show.is_sold
-                            ? show.profit > 0
-                              ? 'WON'
-                              : 'LOST'
-                            : 'LIVE'}
-                        </div>
-                      </div>
-
-                      <div className="text-sm font-semibold text-navy mb-3">
-                        {show.contract_type}
-                      </div>
-
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
-                        <div
-                          className={`h-full transition-all ${
-                            show.is_sold
-                              ? show.profit > 0
-                                ? 'bg-green-500'
-                                : 'bg-red-500'
-                              : 'bg-teal-500 animate-pulse'
-                          }`}
-                          style={{ width: show.is_sold ? '100%' : '45%' }}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs mb-4">
-                        <div>
-                          <div className="text-gray-500">Stake</div>
-                          <div className="font-mono font-semibold text-navy mt-0.5">
-                            {show.buy_price.toFixed(2)} USD
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-gray-500">
-                            {show.is_sold ? 'Profit' : 'Payout'}
-                          </div>
-                          <div
-                            className={`font-mono font-semibold mt-0.5 ${
-                              show.is_sold
-                                ? show.profit >= 0
-                                  ? 'text-green-600'
-                                  : 'text-red-600'
-                                : 'text-navy'
-                            }`}
-                          >
-                            {show.is_sold
-                              ? `${show.profit >= 0 ? '+' : ''}${show.profit.toFixed(
-                                  2
-                                )}`
-                              : show.payout.toFixed(2)}{' '}
-                            USD
-                          </div>
-                        </div>
-                      </div>
-
-                      {consecutiveLossesRef.current > 0 && (
-                        <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2">
-                          Martingale level {consecutiveLossesRef.current} —
-                          next stake ${currentStake?.toFixed(2) ?? '—'}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-
-          {detailTab === 'transactions' && (
-            <div>
-              <div className="flex gap-2 px-3 py-2 border-b border-gray-100">
-                <button
-                  disabled
-                  className="text-[11px] px-3 py-1.5 rounded border border-gray-200 text-gray-400"
-                >
-                  Download
-                </button>
-                <button
-                  disabled
-                  className="text-[11px] px-3 py-1.5 rounded border border-gray-200 text-gray-700 font-medium"
-                >
-                  View Detail
-                </button>
-              </div>
-
-              <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 py-2 text-[10px] text-gray-500 font-medium border-b border-gray-100">
-                <div>Type</div>
-                <div>Entry/Exit spot</div>
-                <div className="text-right">Buy price and P/L</div>
-              </div>
-
-              {openTrades.length === 0 ? (
-                <div className="text-center text-gray-400 text-xs py-10">
-                  No transactions yet
-                </div>
-              ) : (
-                <div>
-                  {openTrades.map((t) => {
-                    const won = t.is_sold && t.profit > 0;
-                    const lost = t.is_sold && t.profit <= 0;
-                    return (
-                      <div
-                        key={t.contract_id}
-                        className="border-b border-gray-100 py-2"
-                      >
-                        <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-base leading-none">
-                              {t.contract_type.includes('DIGIT')
-                                ? '🔢'
-                                : t.contract_type.includes('CALL') ||
-                                  t.contract_type.includes('PUT')
-                                ? '↕️'
-                                : '📊'}
-                            </span>
-                            <span className="text-[11px] font-medium text-gray-700">
-                              {t.contract_type}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 text-[11px]">
-                            <span className="text-red-500 text-base leading-none">
-                              ○
-                            </span>
-                            <span className="font-mono text-gray-700">
-                              {t.entry_spot || '—'}
-                            </span>
-                          </div>
-
-                          <div className="text-right text-[11px] font-mono text-gray-700">
-                            {t.buy_price.toFixed(2)} USD
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-3 items-center mt-1">
-                          <div />
-                          <div className="flex items-center gap-1.5 text-[11px]">
-                            <span className="text-gray-400 text-base leading-none">
-                              ○
-                            </span>
-                            <span className="font-mono text-gray-700">
-                              {t.is_sold ? t.current_spot || '—' : '…'}
-                            </span>
-                          </div>
-                          <div
-                            className={`text-right text-[11px] font-mono font-semibold ${
-                              won
-                                ? 'text-green-600'
-                                : lost
-                                ? 'text-red-600'
-                                : 'text-gray-400'
-                            }`}
-                          >
-                            {t.is_sold
-                              ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(
-                                  2
-                                )} USD`
-                              : 'open'}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {detailTab === 'journal' && (
-            <div className="p-3 text-xs">
-              {botJournal.length === 0 ? (
-                <div className="text-center text-gray-400 py-8">
-                  Journal empty
-                </div>
-              ) : (
-                botJournal.map((j, i) => (
-                  <div
-                    key={i}
-                    className="border-b border-gray-50 py-2 last:border-0"
-                  >
-                    <div className="text-[9px] text-gray-400 font-mono">
-                      {j.time}
-                    </div>
-                    <div
-                      className={`mt-0.5 ${
-                        j.kind === 'profit'
-                          ? 'text-green-600'
-                          : j.kind === 'loss'
-                          ? 'text-red-600'
-                          : j.kind === 'buy'
-                          ? 'text-navy'
-                          : 'text-gray-500'
-                      }`}
-                    >
-                      {j.text}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center">
-          <Stat
-            label="Total stake"
-            value={`${botStats.totalStake.toFixed(2)} USD`}
-          />
-          <Stat
-            label="Total payout"
-            value={`${botStats.totalPayout.toFixed(2)} USD`}
-          />
-          <Stat label="No. of runs" value={String(botStats.runs)} />
-          <Stat label="Contracts lost" value={String(botStats.losses)} />
-          <Stat label="Contracts won" value={String(botStats.wins)} />
-          <Stat
-            label="Total profit/loss"
-            value={`${botStats.pl.toFixed(2)} USD`}
-            highlight={
-              botStats.pl > 0 ? 'green' : botStats.pl < 0 ? 'red' : 'none'
-            }
-          />
-        </div>
-
-        <div className="p-3 border-t border-gray-200">
-          <button
-            onClick={handleReset}
-            className="w-full border border-gray-300 rounded py-2 text-sm hover:bg-gray-50"
-          >
-            Reset
-          </button>
-        </div>
+      {/* ============ RIGHT PANEL (desktop only) ============ */}
+      <aside className="hidden md:flex w-80 shrink-0 border-l border-gray-200 bg-white flex-col">
+        {renderRightPanel()}
       </aside>
+
+      {/* ============ MOBILE BLOCKS MENU OVERLAY ============ */}
+      {mobileMenuOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-[1000] md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside className="fixed top-0 left-0 bottom-0 w-[85%] max-w-[340px] bg-white z-[1001] flex flex-col shadow-2xl md:hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <span className="font-semibold text-navy">Blocks menu</span>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-gray-400 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col">
+              {renderSidebar()}
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* ============ MOBILE REPORT OVERLAY ============ */}
+      {mobileReportOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-[1000] md:hidden"
+            onClick={() => setMobileReportOpen(false)}
+          />
+          <aside className="fixed top-0 right-0 bottom-0 w-[92%] max-w-[400px] bg-white z-[1001] flex flex-col shadow-2xl md:hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <span className="font-semibold text-navy">Report</span>
+              <button
+                onClick={() => setMobileReportOpen(false)}
+                className="text-gray-400 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto flex flex-col">
+              {renderRightPanel()}
+            </div>
+          </aside>
+        </>
+      )}
 
       <QuickStrategyModal
         open={showQuickStrategy}
@@ -1013,7 +1078,7 @@ function BlockRenderer({
       </button>
 
       {block.open && (
-        <div className="bg-white border-l-4 border-[#0b3d91] rounded-b-md rounded-tr-md p-4 mb-4 w-fit shadow-sm text-sm">
+        <div className="bg-white border-l-4 border-[#0b3d91] rounded-b-md rounded-tr-md p-3 md:p-4 mb-4 w-fit max-w-full shadow-sm text-xs md:text-sm">
           {block.type === 'trade_params' && (
             <div className="space-y-2">
               <SelectField
@@ -1042,12 +1107,12 @@ function BlockRenderer({
               />
 
               <CheckboxRow
-                label="Restart buy/sell on error (disable for better performance):"
+                label="Restart buy/sell on error:"
                 checked={block.restartBuySell ?? true}
                 onChange={(c) => onUpdate({ restartBuySell: c })}
               />
               <CheckboxRow
-                label="Restart last trade on error (bot ignores the unsuccessful trade):"
+                label="Restart last trade on error:"
                 checked={block.restartLastTrade ?? true}
                 onChange={(c) => onUpdate({ restartLastTrade: c })}
               />
@@ -1068,7 +1133,7 @@ function BlockRenderer({
                   return (
                     <div key={name} className="flex items-center gap-2">
                       <span className="text-gray-500 w-6">set</span>
-                      <span className="bg-gray-100 px-2 py-1 rounded text-gray-700 w-40">
+                      <span className="bg-gray-100 px-2 py-1 rounded text-gray-700 w-32 md:w-40 truncate">
                         {name}
                       </span>
                       <span className="text-gray-500">to</span>
@@ -1083,7 +1148,7 @@ function BlockRenderer({
                             },
                           })
                         }
-                        className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-24"
+                        className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-20 md:w-24"
                       />
                     </div>
                   );
@@ -1091,8 +1156,8 @@ function BlockRenderer({
               </div>
 
               <SectionHeader label="Trade options:" />
-              <div className="flex items-center gap-2">
-                <span className="text-gray-500 w-20">Duration:</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-gray-500 w-16 md:w-20">Duration:</span>
                 <select
                   value={block.durationType ?? 'Ticks'}
                   onChange={(e) => onUpdate({ durationType: e.target.value })}
@@ -1110,9 +1175,9 @@ function BlockRenderer({
                   onChange={(e) =>
                     onUpdate({ durationValue: Number(e.target.value) })
                   }
-                  className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-20"
+                  className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-16 md:w-20"
                 />
-                <span className="text-gray-500 ml-3 w-14">Stake:</span>
+                <span className="text-gray-500 ml-2 md:ml-3 w-14">Stake:</span>
                 <span className="bg-gray-100 px-2 py-1 rounded text-gray-700">
                   USD
                 </span>
@@ -1173,7 +1238,7 @@ function BlockRenderer({
       <button
         onClick={onDelete}
         title="Delete block"
-        className="absolute top-1 -right-10 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500 text-lg"
+        className="absolute top-1 -right-8 md:-right-10 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-500 text-lg"
       >
         🗑
       </button>
@@ -1207,7 +1272,7 @@ function Stat({
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="bg-[#0b3d91] text-white text-xs font-semibold px-3 py-1.5 rounded-sm -mx-4 mt-3 mb-2 w-[calc(100%+2rem)]">
+    <div className="bg-[#0b3d91] text-white text-xs font-semibold px-3 py-1.5 rounded-sm -mx-3 md:-mx-4 mt-3 mb-2 w-[calc(100%+1.5rem)] md:w-[calc(100%+2rem)]">
       {label}
     </div>
   );
@@ -1224,7 +1289,7 @@ function CheckboxRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-2 py-1">
-      <span className="text-gray-500 text-xs">{label}</span>
+      <span className="text-gray-500 text-[10px] md:text-xs">{label}</span>
       <input
         type="checkbox"
         checked={checked}
@@ -1252,12 +1317,12 @@ function SelectField({
   groups,
 }: SelectFieldProps) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-gray-500 w-44 shrink-0">{label}:</span>
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-gray-500 w-36 md:w-44 shrink-0">{label}:</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="bg-gray-100 hover:bg-gray-200 transition px-2 py-1 rounded text-gray-700 outline-none cursor-pointer max-w-md"
+        className="bg-gray-100 hover:bg-gray-200 transition px-2 py-1 rounded text-gray-700 outline-none cursor-pointer max-w-full"
       >
         {groups
           ? groups.map((g) => (
