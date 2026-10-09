@@ -53,11 +53,11 @@ export default function CopyTrading() {
   return (
     <main className="bg-[#0a1a3c] min-h-[calc(100vh-56px)] text-white">
       <div className="max-w-7xl mx-auto p-3 sm:p-4 space-y-4">
-        {/* Top bar */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Top bar — wrap on mobile */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={startDemoToReal}
-            className="bg-green-500 hover:bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-md transition"
+            className="bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-md transition"
           >
             Start Demo to Real Copy Trading
           </button>
@@ -68,12 +68,10 @@ export default function CopyTrading() {
         </div>
 
         {/* ROT box */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-300">
-              ROT — {rotLinked ? 'linked' : 'not linked yet'}
-            </span>
-          </div>
+        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-xs sm:text-sm text-gray-300">
+            ROT — {rotLinked ? 'linked' : 'not linked yet'}
+          </span>
           <div className="flex gap-1">
             {[0, 1, 2, 3, 4].map((i) => (
               <span
@@ -87,42 +85,45 @@ export default function CopyTrading() {
         </div>
 
         {/* Add follower panel */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg p-4 space-y-3">
+        <div className="bg-[#132a52] border border-white/10 rounded-lg p-3 sm:p-4 space-y-3">
+          {/* Input row — stacks on mobile */}
           <div className="flex flex-col md:flex-row gap-2">
             <input
               type="text"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               placeholder="Enter follower's Deriv v2 API token (PAT, trade scope)"
-              className="flex-1 bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-sm text-white placeholder:text-gray-500 outline-none focus:border-blue-400"
+              className="flex-1 bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-xs sm:text-sm text-white placeholder:text-gray-500 outline-none focus:border-blue-400 min-w-0"
             />
-            <select
-              value={account}
-              onChange={(e) => setAccount(e.target.value as 'Real' | 'Demo')}
-              className="bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-sm text-white outline-none cursor-pointer"
-            >
-              <option value="Real">Real</option>
-              <option value="Demo">Demo</option>
-            </select>
-            <button
-              onClick={addClient}
-              className="bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-md transition"
-            >
-              Add
-            </button>
-            <button
-              onClick={syncClients}
-              className="bg-[#0a1a3c] border border-white/10 hover:border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-md flex items-center justify-center gap-2 transition"
-            >
-              Sync
-              <span
-                className={`inline-block ${
-                  syncing ? 'animate-spin' : ''
-                }`}
+            <div className="flex gap-2">
+              <select
+                value={account}
+                onChange={(e) =>
+                  setAccount(e.target.value as 'Real' | 'Demo')
+                }
+                className="flex-1 md:flex-none bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-sm text-white outline-none cursor-pointer"
               >
-                ↻
-              </span>
-            </button>
+                <option value="Real">Real</option>
+                <option value="Demo">Demo</option>
+              </select>
+              <button
+                onClick={addClient}
+                className="flex-1 md:flex-none bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold px-4 sm:px-5 py-2.5 rounded-md transition"
+              >
+                Add
+              </button>
+              <button
+                onClick={syncClients}
+                className="flex-1 md:flex-none bg-[#0a1a3c] border border-white/10 hover:border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-md flex items-center justify-center gap-2 transition"
+              >
+                Sync
+                <span
+                  className={`inline-block ${syncing ? 'animate-spin' : ''}`}
+                >
+                  ↻
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Start Copy Trading row */}
@@ -144,12 +145,12 @@ export default function CopyTrading() {
         </div>
 
         {/* Clients count */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 text-sm">
+        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 text-xs sm:text-sm">
           Total Clients added:{' '}
           <span className="font-semibold">{clients.length}</span>
         </div>
 
-        {/* Client cards */}
+        {/* Client cards — stack on mobile */}
         {clients.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {clients.map((c) => (
@@ -184,7 +185,7 @@ export default function CopyTrading() {
         <div className="h-40" />
 
         {/* AI floating button */}
-        <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
+        <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center z-10">
           AI
         </button>
       </div>
