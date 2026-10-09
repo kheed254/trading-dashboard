@@ -269,6 +269,10 @@ export default function BotBuilder() {
       if (next) {
         consecutiveLossesRef.current = 0;
         setCurrentStake(getBaseStake());
+        /* Auto-open the Report overlay on mobile — matches DerivAnalyser */
+        if (window.innerWidth < 768) {
+          setMobileReportOpen(true);
+        }
       }
       setBotRunning(next);
       addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
@@ -617,7 +621,7 @@ export default function BotBuilder() {
             <>
               <div className="flex justify-between mb-1">
                 <span>Bot is running…</span>
-                <span>72%</span>
+                <span>{botStats.runs} runs</span>
               </div>
               <div className="h-1 bg-gray-100 rounded overflow-hidden">
                 <div
@@ -629,7 +633,7 @@ export default function BotBuilder() {
           ) : (
             <div className="flex justify-between">
               <span>Bot is not running</span>
-              <span>0% complete</span>
+              <span>{botStats.runs} runs</span>
             </div>
           )}
         </div>
@@ -753,6 +757,13 @@ export default function BotBuilder() {
                         </div>
                       </div>
                     </div>
+
+                    {consecutiveLossesRef.current > 0 && (
+                      <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-2">
+                        Martingale level {consecutiveLossesRef.current} — next
+                        stake ${currentStake?.toFixed(2) ?? '—'}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -900,7 +911,6 @@ export default function BotBuilder() {
       <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
         {/* Toolbar */}
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
-          {/* Mobile: hamburger to open Blocks menu */}
           <button
             className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
             title="Blocks menu"
@@ -948,7 +958,6 @@ export default function BotBuilder() {
             ))}
           </div>
 
-          {/* Mobile: Report button */}
           <button
             className="md:hidden ml-auto w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm"
             title="Report"
