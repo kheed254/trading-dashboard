@@ -1,4 +1,4 @@
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 
 function fmtMoney(n: number) {
   return n.toLocaleString('en-US', {

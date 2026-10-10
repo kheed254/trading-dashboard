@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 import { useBotStatus } from '../lib/bot-status';
 
 /* ---------- Icons ---------- */

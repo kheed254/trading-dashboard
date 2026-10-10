@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 import { useBotStatus } from '../lib/bot-status';
 
 const MARKETS = [

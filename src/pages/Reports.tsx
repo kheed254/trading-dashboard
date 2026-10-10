@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTradeStore } from '../lib/trading/store';
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 
 type Period = 'today' | '7d' | '30d' | 'all';
 type Source = 'all' | 'real' | 'paper';

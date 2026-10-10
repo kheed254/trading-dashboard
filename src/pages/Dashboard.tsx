@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import SignalCard from '../components/SignalCard';
 import { useMultiTicks } from '../lib/deriv';
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 
 /* ---------- Signals data (kept from your original) ---------- */
 const signals = [

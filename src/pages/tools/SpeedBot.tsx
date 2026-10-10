@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTradeStore } from '../../lib/trading/store';
-import { useAuthWs } from '../../lib/auth-ws';
+import { useAuthWs } from '../../lib/auth-ws-context';
 import { useTicks } from '../../lib/deriv';
 
 const MARKETS = [

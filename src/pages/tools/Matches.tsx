@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../../lib/deriv';
 import { computeDigitStats, mostFrequent } from '../../lib/digitStats';
 import { useTradeStore } from '../../lib/trading/store';
-import { useAuthWs } from '../../lib/auth-ws';
+import { useAuthWs } from '../../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {

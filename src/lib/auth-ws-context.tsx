@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 
 /* ---------- Config ---------- */
 const DERIV_APP_ID = '33zV8oLiXd2lfpHkcvdWt';
@@ -57,15 +57,7 @@ export type PlaceTradeInput = {
   currency?: string;
 };
 
-export type ProposalInput = {
-  symbol: string;
-  contractType: string;
-  stake: number;
-  duration: number;
-  durationUnit: string;
-  barrier?: string;
-  currency?: string;
-};
+export type ProposalInput = PlaceTradeInput;
 
 export type AuthWsState = {
   authorized: boolean;
@@ -128,8 +120,10 @@ async function fetchOtpUrl(token: string, accountId: string): Promise<string> {
   return url;
 }
 
-/* ---------- Hook ---------- */
-export function useAuthWs(): AuthWsState {
+/* ---------- Context ---------- */
+const AuthWsContext = createContext<AuthWsState | null>(null);
+
+export function AuthWsProvider({ children }: { children: ReactNode }) {
   const [authorized, setAuthorized] = useState(false);
   const [user, setUser] = useState<DerivUser | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -144,16 +138,22 @@ export function useAuthWs(): AuthWsState {
 
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
+  const isConnectingRef = useRef(false);
 
-  // Proposal subscription state
   const proposalSubIdRef = useRef<number>(12000);
   const proposalSubCallbacksRef = useRef<Record<number, (payout: number) => void>>({});
   const activeProposalIdsRef = useRef<string[]>([]);
 
   const connectWithAccount = async (accountId: string) => {
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
     accountIdRef.current = accountId;
     const token = tokenRef.current;
-    if (!token) return;
+
+    if (!token) {
+      isConnectingRef.current = false;
+      return;
+    }
 
     try {
       setError(null);
@@ -165,6 +165,7 @@ export function useAuthWs(): AuthWsState {
 
       ws.onopen = () => {
         console.log('[StingerFX] WebSocket connected via OTP');
+        isConnectingRef.current = false;
         ws.send(JSON.stringify({ balance: 1, subscribe: 1 }));
         ws.send(JSON.stringify({ portfolio: 1 }));
         ws.send(JSON.stringify({ statement: 1, limit: 20, req_id: 7777 }));
@@ -183,16 +184,12 @@ export function useAuthWs(): AuthWsState {
           } : prev);
         }
 
-        // One-shot proposal waiters (for placeTrade)
         if (data.msg_type === 'proposal' && data.req_id) {
           const waiter = proposalWaitersRef.current[data.req_id];
           if (waiter) { waiter(data); delete proposalWaitersRef.current[data.req_id]; }
         }
 
-        // Subscription proposal responses (for live payout display)
         if (data.msg_type === 'proposal' && data.req_id && data.req_id >= 12000) {
-          console.log('[StingerFX] Proposal sub response:', { req_id: data.req_id, error: data.error, payout: data.proposal?.payout });
-          
           if (data.error) {
             console.warn('[StingerFX] Proposal sub error:', data.error.message);
             return;
@@ -203,12 +200,7 @@ export function useAuthWs(): AuthWsState {
               activeProposalIdsRef.current.push(prop.id);
             }
             const cb = proposalSubCallbacksRef.current[data.req_id];
-            if (cb) {
-              cb(Number(prop.payout || 0));
-              console.log('[StingerFX] Payout callback fired:', prop.payout);
-            } else {
-              console.warn('[StingerFX] No callback for req_id', data.req_id);
-            }
+            if (cb) cb(Number(prop.payout || 0));
           }
         }
 
@@ -245,7 +237,6 @@ export function useAuthWs(): AuthWsState {
             if (idx >= 0) { const n = [...prev]; n[idx] = trade; return n; }
             return [trade, ...prev];
           });
-          if (c.is_sold) console.log('[StingerFX] Settled contract', c.contract_id, 'profit', c.profit);
         }
 
         if (data.msg_type === 'statement' && data.statement) {
@@ -261,19 +252,14 @@ export function useAuthWs(): AuthWsState {
           })));
         }
 
-        if (data.msg_type === 'portfolio' && data.portfolio) {
-          console.log('[StingerFX] Portfolio:', (data.portfolio.contracts || []).length, 'open contracts');
-        }
-
-        if (data.error && data.msg_type !== 'proposal') {
-          console.warn('[StingerFX] API error:', data.error);
-        }
+        if (data.error) console.warn('[StingerFX] API error:', data.error);
       };
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
 
       ws.onclose = () => {
         console.log('[StingerFX] WebSocket closed');
+        isConnectingRef.current = false;
         if (accountIdRef.current) {
           if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = setTimeout(() => {
@@ -286,6 +272,7 @@ export function useAuthWs(): AuthWsState {
       setAuthorized(true);
       setUser((prev) => prev ? { ...prev, activeAccountId: accountId } : prev);
     } catch (err: any) {
+      isConnectingRef.current = false;
       console.error('[StingerFX] connect error:', err);
       setError(err.message || 'Failed to connect');
     }
@@ -347,8 +334,6 @@ export function useAuthWs(): AuthWsState {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ statement: 1, limit, req_id: 7777 }));
-    } else {
-      console.warn('[StingerFX] requestStatement: socket not open');
     }
   };
 
@@ -444,7 +429,7 @@ export function useAuthWs(): AuthWsState {
     proposalSubCallbacksRef.current = {};
   };
 
-  return {
+  const value: AuthWsState = {
     authorized,
     user,
     error,
@@ -457,4 +442,14 @@ export function useAuthWs(): AuthWsState {
     subscribeProposal,
     unsubscribeProposal,
   };
+
+  return <AuthWsContext.Provider value={value}>{children}</AuthWsContext.Provider>;
+}
+
+export function useAuthWs(): AuthWsState {
+  const ctx = useContext(AuthWsContext);
+  if (!ctx) {
+    throw new Error('useAuthWs must be used within an AuthWsProvider');
+  }
+  return ctx;
 }

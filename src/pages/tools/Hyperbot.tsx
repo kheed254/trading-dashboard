@@ -5,7 +5,7 @@ import {
   computeOverUnder,
 } from '../../lib/digitStats';
 import { useTradeStore } from '../../lib/trading/store';
-import { useAuthWs } from '../../lib/auth-ws';
+import { useAuthWs } from '../../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {

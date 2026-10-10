@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats, computeEvenOdd } from '../lib/digitStats';
-import { useAuthWs } from '../lib/auth-ws';
+import { useAuthWs } from '../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
