@@ -39,18 +39,18 @@ export default function ManualTrader() {
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
+  // FIX: Stake is now dynamic
+  const [stake, setStake] = useState(10);
+
   // Live payouts from Deriv
   const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
   const [secondaryPayout, setSecondaryPayout] = useState<number | null>(null);
-
-  // Fixed stake
-  const stake = 10;
 
   const { authorized, placeTrade, subscribeProposal, unsubscribeProposal } = useAuthWs();
 
   const symbol = MARKET_MAP[marketName] as any;
 
-  /* ---- Live stream using the same hook as BulkTrader ---- */
+  /* ---- Live stream ---- */
   const { currentDigit, digits, connected } = useDigitStream(symbol, 1000);
 
   /* ---- Digit stats ---- */
@@ -68,15 +68,18 @@ export default function ManualTrader() {
     }
   };
 
-  /* ---- FIX: Subscribe to live payouts after WebSocket is ready ---- */
+  /* ---- Subscribe to live payouts (waits for WebSocket) ---- */
   useEffect(() => {
     if (!authorized) return;
+
+    // Reset old payouts when parameters change
+    setPrimaryPayout(null);
+    setSecondaryPayout(null);
 
     const { primary, secondary, barrier } = getContractTypes();
     const isDigit = primary.startsWith('DIGIT');
     const duration = isDigit ? 1 : 2;
 
-    // Wait 1s for the WebSocket to fully open before subscribing
     const primaryTimeout = setTimeout(() => {
       subscribeProposal(
         { symbol, contractType: primary, stake, duration, durationUnit: 't', barrier },
@@ -84,7 +87,6 @@ export default function ManualTrader() {
       );
     }, 1000);
 
-    // Wait an extra 500ms before secondary to avoid ID collision
     const secondaryTimeout = setTimeout(() => {
       subscribeProposal(
         { symbol, contractType: secondary, stake, duration, durationUnit: 't', barrier },
@@ -100,6 +102,14 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized, symbol, tradeType, selectedDigit, stake]);
 
+  /* ---- Stake controls ---- */
+  const adjustStake = (delta: number) => {
+    setStake((s) => {
+      const next = +(s + delta).toFixed(2);
+      return Math.max(0.35, next); // Deriv minimum stake
+    });
+  };
+
   /* ---- Place trade ---- */
   const handleTrade = async (direction: 'primary' | 'secondary') => {
     if (!authorized) {
@@ -112,7 +122,6 @@ export default function ManualTrader() {
     const { primary, secondary, barrier } = getContractTypes();
     const contractType = direction === 'primary' ? primary : secondary;
 
-    // Digit contracts use 1 tick. CALL/PUT need min 2 ticks.
     const isDigit = contractType.startsWith('DIGIT');
     const duration = isDigit ? 1 : 2;
     const durationUnit = 't';
@@ -180,32 +189,22 @@ export default function ManualTrader() {
         <div className="w-full max-w-md">
           <div className="grid grid-cols-5 gap-3 mb-6">
             {digitStats.slice(0, 5).map((d) => (
-              <DigitGauge
-                key={d.digit}
-                digit={d.digit}
-                pct={d.pct}
-                isCurrent={d.digit === currentDigit}
-              />
+              <DigitGauge key={d.digit} digit={d.digit} pct={d.pct} isCurrent={d.digit === currentDigit} />
             ))}
           </div>
           <div className="grid grid-cols-5 gap-3">
             {digitStats.slice(5, 10).map((d) => (
-              <DigitGauge
-                key={d.digit}
-                digit={d.digit}
-                pct={d.pct}
-                isCurrent={d.digit === currentDigit}
-              />
+              <DigitGauge key={d.digit} digit={d.digit} pct={d.pct} isCurrent={d.digit === currentDigit} />
             ))}
           </div>
         </div>
-
         <button className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">‹</button>
         <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">›</button>
       </div>
 
       {/* ============ BOTTOM: TRADE TICKET ============ */}
       <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6">
+        {/* Trade type + Digit */}
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => setShowTypePicker(true)}
@@ -239,15 +238,57 @@ export default function ManualTrader() {
           )}
         </div>
 
-        <div className="flex items-center justify-between px-4 py-3 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
-          <span className="text-xs text-gray-400">Risk Disclaimer</span>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-white text-base">{stake.toFixed(2)} USD</span>
-            <span className="text-xs text-gray-500">Stake</span>
+        {/* FIX: Stake input with +/- controls */}
+        <div className="flex items-center gap-2 mb-4">
+          <button
+            onClick={() => adjustStake(-1)}
+            className="w-12 h-12 rounded-lg bg-[#0a0e27] border border-white/10 text-white text-xl font-bold hover:bg-white/5 transition flex items-center justify-center"
+          >
+            −
+          </button>
+          <div className="flex-1 flex items-center justify-center bg-[#0a0e27] border border-white/10 rounded-lg py-3">
+            <input
+              type="number"
+              step="0.5"
+              min="0.35"
+              value={stake}
+              onChange={(e) => setStake(Math.max(0.35, Number(e.target.value) || 0.35))}
+              className="bg-transparent text-white font-bold text-2xl text-center outline-none w-32"
+            />
+            <span className="text-gray-400 text-sm ml-2">USD</span>
           </div>
+          <button
+            onClick={() => adjustStake(1)}
+            className="w-12 h-12 rounded-lg bg-[#0a0e27] border border-white/10 text-white text-xl font-bold hover:bg-white/5 transition flex items-center justify-center"
+          >
+            +
+          </button>
         </div>
 
-        {/* Action Buttons with LIVE PAYOUTS */}
+        {/* Quick stake chips */}
+        <div className="flex gap-1 mb-4">
+          {[1, 5, 10, 25, 50].map((amount) => (
+            <button
+              key={amount}
+              onClick={() => setStake(amount)}
+              className={`flex-1 py-1.5 rounded text-xs font-medium transition ${
+                stake === amount
+                  ? 'bg-teal-500 text-white'
+                  : 'bg-[#0a0e27] text-gray-400 border border-white/10 hover:bg-white/5'
+              }`}
+            >
+              ${amount}
+            </button>
+          ))}
+        </div>
+
+        {/* Risk disclaimer row */}
+        <div className="flex items-center justify-between px-4 py-2 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
+          <span className="text-xs text-yellow-500 font-medium">Risk Disclaimer</span>
+          <span className="text-xs text-gray-500">Max payout: {((primaryPayout || 0)).toFixed(2)} USD</span>
+        </div>
+
+        {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => handleTrade('primary')}
@@ -293,7 +334,7 @@ export default function ManualTrader() {
         </div>
       </div>
 
-      {/* ============ TRADE TYPE PICKER (Dark Bottom Sheet) ============ */}
+      {/* ============ TRADE TYPE PICKER ============ */}
       {showTypePicker && (
         <div
           className="fixed inset-0 bg-black/70 flex items-end justify-center z-50"
@@ -322,16 +363,8 @@ export default function ManualTrader() {
   );
 }
 
-/* ---------- Digit Gauge Component ---------- */
-function DigitGauge({
-  digit,
-  pct,
-  isCurrent,
-}: {
-  digit: number;
-  pct: number;
-  isCurrent: boolean;
-}) {
+/* ---------- Digit Gauge ---------- */
+function DigitGauge({ digit, pct, isCurrent }: { digit: number; pct: number; isCurrent: boolean }) {
   const r = 22;
   const strokeDasharray = 2 * Math.PI * r;
   const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
