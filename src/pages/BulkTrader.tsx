@@ -36,7 +36,7 @@ export default function BulkTrader() {
   const [numTrades, setNumTrades] = useState(1);
   const [isTrading, setIsTrading] = useState(false);
 
-  // FIX: Imported useAuthWs to actually place the trades
+  // Imported useAuthWs to actually place the trades
   const { authorized, placeTrade } = useAuthWs();
 
   /* ---- Live stream ---- */
@@ -50,7 +50,7 @@ export default function BulkTrader() {
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
 
-  // FIX: Added the trade placement logic
+  // FIX: Added looping logic for multiple trades
   const handleTrade = async (direction: 'EVEN' | 'ODD') => {
     if (!authorized) {
       alert('Please log in to place trades.');
@@ -60,28 +60,30 @@ export default function BulkTrader() {
     setIsTrading(true);
     
     // Map the UI selection to the Deriv API contract type
-    // DIGITEVEN = Even, DIGITODD = Odd
     const contractType = direction === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
     
-    // Enforce minimum duration (Deriv requires at least 1 tick for digits)
+    // Enforce minimum duration
     const duration = Math.max(1, ticks);
     const durationUnit = 't';
 
     try {
-      // Place the trade using the WebSocket hook
-      await placeTrade({
-        symbol,
-        contractType,
-        stake: stake,
-        duration: duration,
-        durationUnit: durationUnit,
-        // Digits Even/Odd do not use a barrier
-      });
+      // Loop based on the "No of Trades" input
+      for (let i = 0; i < numTrades; i++) {
+        console.log(`[Bulk Trader] Placing trade ${i + 1} of ${numTrades}`);
+        
+        await placeTrade({
+          symbol,
+          contractType,
+          stake: stake,
+          duration: duration,
+          durationUnit: durationUnit,
+        });
 
-      // Optional: Loop for the number of trades requested
-      // (You would need a loop with a delay here to place multiple trades sequentially)
-      // For now, it places 1 trade as a test.
-      
+        // 1-second delay between trades to prevent API rate limiting
+        if (i < numTrades - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
     } catch (error) {
       console.error('Bulk Trader error:', error);
       alert('Failed to place trade. Check console for details.');
@@ -214,7 +216,7 @@ export default function BulkTrader() {
         </div>
       </div>
 
-      {/* EVEN / ODD BARS — FIXED: Now clickable buttons! */}
+      {/* EVEN / ODD BARS — Now clickable buttons! */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
         <button 
           onClick={() => handleTrade('EVEN')}
