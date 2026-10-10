@@ -311,7 +311,6 @@ export default function BotBuilder() {
   const handleSave = () => { saveBot(blocks as any); setLastSavedAt(Date.now()); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 800); };
   const handleLoad = () => { const saved = loadBot(); if (!saved || saved.blocks.length === 0) { alert('No saved bot found.'); return; } setBlocks(saved.blocks as Block[]); setLastSavedAt(saved.savedAt); };
 
-  // FIX: Use handleReset in the collapsed mobile bar
   const handleReset = () => {
     setBotStats({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
     setBotJournal([]);
@@ -434,16 +433,20 @@ export default function BotBuilder() {
 
       <div
         className={`md:hidden fixed left-0 right-0 bottom-0 bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
-          mobileReportOpen ? 'h-[70vh]' : 'h-[56px]'
+          mobileReportOpen ? 'h-[70vh]' : 'h-[64px]'
         }`}
       >
-        <div className="relative flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
+        {/* Collapsible header bar with Run button on the right */}
+        <div className="relative flex items-center justify-between px-3 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
+          {/* Left: Reset */}
           <button
             onClick={handleReset}
             className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
           >
             Reset
           </button>
+
+          {/* Center: Chevron (absolute) */}
           <button
             onClick={() => setMobileReportOpen(!mobileReportOpen)}
             className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
@@ -461,9 +464,25 @@ export default function BotBuilder() {
               <path d="M18 15l-6-6-6 6" />
             </svg>
           </button>
-          <div className="text-xs text-gray-500 font-medium">
-            {botRunning ? `Running · ${botStats.runs} runs` : 'Bot idle'}
-          </div>
+
+          {/* Right: Run/Stop button */}
+          <button
+            onClick={toggleRun}
+            className={`text-xs font-bold px-4 py-2 rounded-md transition flex items-center gap-1.5 ${
+              botRunning
+                ? 'bg-red-500 text-white hover:bg-red-600'
+                : 'bg-teal-500 text-white hover:bg-teal-600'
+            }`}
+          >
+            {botRunning ? (
+              <>
+                <span className="w-2.5 h-2.5 bg-white rounded-sm" />
+                Stop
+              </>
+            ) : (
+              <>▶ Run</>
+            )}
+          </button>
         </div>
 
         {mobileReportOpen && (
@@ -477,7 +496,7 @@ export default function BotBuilder() {
         {renderSidebar()}
       </aside>
 
-      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden pb-16 md:pb-0">
+      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden pb-20 md:pb-0">
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500 flex-shrink-0">
           <button className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Blocks menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
           <button className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Reset blocks" onClick={() => setBlocks([createBlock('trade_params'), createBlock('purchase'), createBlock('sell'), createBlock('restart')])}>↻</button>
@@ -497,7 +516,7 @@ export default function BotBuilder() {
           {blocks.map((b, i) => (
             <BlockRenderer key={b.id} block={b} index={i + 1} onToggle={() => toggleBlock(b.id)} onDelete={() => removeBlock(b.id)} onUpdate={(patch) => updateBlock(b.id, patch)} />
           ))}
-          <button className="absolute bottom-20 md:bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center z-10">AI</button>
+          <button className="absolute bottom-6 md:bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center z-10">AI</button>
         </div>
       </main>
 
