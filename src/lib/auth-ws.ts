@@ -167,7 +167,8 @@ export function useAuthWs(): AuthWsState {
           if (waiter) { waiter(data); delete proposalWaitersRef.current[data.req_id]; }
         }
 
-        if (data.msg_type === 'buy' && data.req_id && data.req_id >= 9100) {
+        // FIX: Changed 9100 to 9000 to catch the first 100 trades
+        if (data.msg_type === 'buy' && data.req_id && data.req_id >= 9000) {
           if (data.error) { console.warn('[StingerFX] Buy error:', data.error); return; }
           const b = data.buy;
           console.log('[StingerFX] Bought contract', b.contract_id);
@@ -322,8 +323,16 @@ export function useAuthWs(): AuthWsState {
     console.log('[StingerFX] Sending proposal:', proposalReq);
 
     proposalWaitersRef.current[propReqId] = (resp) => {
-      if (resp.error) { console.warn('[StingerFX] Proposal error:', resp.error.message); return; }
+      if (resp.error) { 
+        console.warn('[StingerFX] Proposal error:', resp.error.message); 
+        return; 
+      }
       const prop = resp.proposal;
+      // FIX: Ensure proposal exists before trying to buy it
+      if (!prop || !prop.id) {
+        console.warn('[StingerFX] No proposal returned in response');
+        return;
+      }
       console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
       ws.send(JSON.stringify({
         buy: prop.id,
