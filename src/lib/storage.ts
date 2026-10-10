@@ -1,7 +1,4 @@
-/* ---------- Tiny localStorage helper for the bot builder ---------- */
-
-const STORAGE_KEY = 'derivanalyser:bot:v1';
-
+/* ---------- Types ---------- */
 export type SavedBlock = {
   id: string;
   type: 'trade_params' | 'purchase' | 'sell' | 'restart';
@@ -9,64 +6,59 @@ export type SavedBlock = {
   market?: string;
   tradeType?: string;
   contractType?: string;
+  digitBarrier?: number;
   candleInterval?: string;
-  direction?: 'Rise' | 'Fall';
+  restartBuySell?: boolean;
+  restartLastTrade?: boolean;
+  runOnceValues?: Record<string, string | number>;
+  durationType?: string;
+  durationValue?: number;
+  stakeType?: string;
+  // FIX: Allow all direction types used by the new bot builder
+  direction?: 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs';
 };
 
 export type SavedBot = {
-  version: 1;
-  savedAt: number;
   blocks: SavedBlock[];
+  savedAt: number;
 };
 
-/** Save the current blocks list to localStorage. */
-export function saveBot(blocks: SavedBlock[]) {
+const STORAGE_KEY = 'stingerfx_bot_v1';
+
+/* ---------- Save ---------- */
+export function saveBot(blocks: SavedBlock[]): void {
   try {
-    const payload: SavedBot = {
-      version: 1,
-      savedAt: Date.now(),
-      blocks,
-    };
+    const payload: SavedBot = { blocks, savedAt: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch {
-    /* storage might be full or disabled — ignore silently */
+  } catch (err) {
+    console.warn('[StingerFX] saveBot failed:', err);
   }
 }
 
-/** Load the previously saved blocks list. Returns null if nothing saved. */
+/* ---------- Load ---------- */
 export function loadBot(): SavedBot | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SavedBot;
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.blocks)) {
-      return null;
-    }
+    if (!parsed || !Array.isArray(parsed.blocks)) return null;
     return parsed;
-  } catch {
+  } catch (err) {
+    console.warn('[StingerFX] loadBot failed:', err);
     return null;
   }
 }
 
-/** Clear the saved bot. */
-export function clearSavedBot() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Format a timestamp for the UI, e.g. "saved 2 min ago". */
+/* ---------- Format relative time ---------- */
 export function formatAgo(ts: number): string {
-  const diff = Math.max(0, Date.now() - ts);
+  const diff = Date.now() - ts;
   const sec = Math.floor(diff / 1000);
-  if (sec < 5) return 'saved just now';
-  if (sec < 60) return `saved ${sec}s ago`;
+  if (sec < 5) return 'just now';
+  if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
-  if (min < 60) return `saved ${min} min ago`;
+  if (min < 60) return `${min}m ago`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `saved ${hr}h ago`;
+  if (hr < 24) return `${hr}h ago`;
   const days = Math.floor(hr / 24);
-  return `saved ${days}d ago`;
+  return `${days}d ago`;
 }
