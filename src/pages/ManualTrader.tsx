@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws';
@@ -39,14 +39,20 @@ export default function ManualTrader() {
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
-  // FIX: Stake is now dynamic
+  // Stake
   const [stake, setStake] = useState(10);
+
+  // FIX: Take Profit state
+  const [takeProfitEnabled, setTakeProfitEnabled] = useState(false);
+  const [takeProfitTarget, setTakeProfitTarget] = useState(50); // USD
+  const [takeProfitReached, setTakeProfitReached] = useState(false);
+  const [sessionPL, setSessionPL] = useState(0); // cumulative P/L for this session
 
   // Live payouts from Deriv
   const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
   const [secondaryPayout, setSecondaryPayout] = useState<number | null>(null);
 
-  const { authorized, placeTrade, subscribeProposal, unsubscribeProposal } = useAuthWs();
+  const { authorized, placeTrade, subscribeProposal, unsubscribeProposal, openTrades } = useAuthWs();
 
   const symbol = MARKET_MAP[marketName] as any;
 
@@ -56,7 +62,7 @@ export default function ManualTrader() {
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-  /* ---- Resolve contract types based on trade type ---- */
+  /* ---- Resolve contract types ---- */
   const getContractTypes = () => {
     switch (tradeType) {
       case 'evenodd': return { primary: 'DIGITEVEN', secondary: 'DIGITODD', barrier: undefined };
@@ -68,11 +74,10 @@ export default function ManualTrader() {
     }
   };
 
-  /* ---- Subscribe to live payouts (waits for WebSocket) ---- */
+  /* ---- Subscribe to live payouts ---- */
   useEffect(() => {
     if (!authorized) return;
 
-    // Reset old payouts when parameters change
     setPrimaryPayout(null);
     setSecondaryPayout(null);
 
@@ -102,11 +107,41 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized, symbol, tradeType, selectedDigit, stake]);
 
+  /* ---- FIX: Track settled trades for Take Profit ---- */
+  const trackedContractIds = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!takeProfitEnabled) return;
+    
+    openTrades.forEach((t) => {
+      if (t.is_sold && !trackedContractIds.current.has(t.contract_id)) {
+        trackedContractIds.current.add(t.contract_id);
+        const newPL = sessionPL + t.profit;
+        setSessionPL(newPL);
+        console.log(`[Manual Trader] Settled P/L: ${t.profit.toFixed(2)}, Session total: ${newPL.toFixed(2)}`);
+
+        if (takeProfitEnabled && newPL >= takeProfitTarget) {
+          setTakeProfitReached(true);
+          console.log(`[Manual Trader] 🎯 Take profit hit! Target: ${takeProfitTarget}`);
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades, takeProfitEnabled, takeProfitTarget]);
+
+  /* ---- Reset take profit when enabled changes ---- */
+  useEffect(() => {
+    if (takeProfitEnabled) {
+      setSessionPL(0);
+      setTakeProfitReached(false);
+      trackedContractIds.current = new Set();
+    }
+  }, [takeProfitEnabled]);
+
   /* ---- Stake controls ---- */
   const adjustStake = (delta: number) => {
     setStake((s) => {
       const next = +(s + delta).toFixed(2);
-      return Math.max(0.35, next); // Deriv minimum stake
+      return Math.max(0.35, next);
     });
   };
 
@@ -114,6 +149,11 @@ export default function ManualTrader() {
   const handleTrade = async (direction: 'primary' | 'secondary') => {
     if (!authorized) {
       alert('Please log in to place trades.');
+      return;
+    }
+
+    if (takeProfitReached) {
+      alert('Take profit already reached. Uncheck "Take profit" or reset to continue trading.');
       return;
     }
 
@@ -157,6 +197,9 @@ export default function ManualTrader() {
     tradeType === 'overunder' ? 'Under' :
     tradeType === 'callput' ? 'Fall' :
     tradeType === 'higherlower' ? 'Lower' : 'No Touch';
+
+  /* ---- Trade buttons disabled? ---- */
+  const buttonsDisabled = isTrading || !authorized || takeProfitReached;
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0e27] overflow-hidden">
@@ -238,7 +281,7 @@ export default function ManualTrader() {
           )}
         </div>
 
-        {/* FIX: Stake input with +/- controls */}
+        {/* Stake input */}
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => adjustStake(-1)}
@@ -282,6 +325,59 @@ export default function ManualTrader() {
           ))}
         </div>
 
+        {/* FIX: Take Profit checkbox and input */}
+        <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
+          <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={takeProfitEnabled}
+              onChange={(e) => setTakeProfitEnabled(e.target.checked)}
+              className="w-4 h-4 accent-teal-500"
+            />
+            <span className="text-sm text-white font-medium">Take profit</span>
+            {takeProfitReached && (
+              <span className="ml-auto text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">🎯 Hit!</span>
+            )}
+          </label>
+
+          {takeProfitEnabled && (
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Stop when profit reaches:</span>
+                <input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={takeProfitTarget}
+                  onChange={(e) => setTakeProfitTarget(Math.max(1, Number(e.target.value) || 1))}
+                  className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1.5 text-white font-bold text-sm text-center outline-none"
+                />
+                <span className="text-xs text-gray-400">USD</span>
+              </div>
+
+              {/* Session P/L display */}
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+                <span className="text-xs text-gray-500">Session P/L:</span>
+                <span className={`text-sm font-bold ${sessionPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)} USD
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              {sessionPL > 0 && (
+                <div className="mt-2">
+                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-teal-500 transition-all"
+                      style={{ width: `${Math.min(100, (sessionPL / takeProfitTarget) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Risk disclaimer row */}
         <div className="flex items-center justify-between px-4 py-2 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
           <span className="text-xs text-yellow-500 font-medium">Risk Disclaimer</span>
@@ -292,9 +388,9 @@ export default function ManualTrader() {
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => handleTrade('primary')}
-            disabled={isTrading || !authorized}
+            disabled={buttonsDisabled}
             className={`rounded-xl overflow-hidden transition ${
-              isTrading || !authorized ? 'opacity-50' : ''
+              buttonsDisabled ? 'opacity-50' : ''
             }`}
           >
             <div className="bg-teal-500 text-white py-4 flex items-center justify-center gap-2">
@@ -313,9 +409,9 @@ export default function ManualTrader() {
 
           <button
             onClick={() => handleTrade('secondary')}
-            disabled={isTrading || !authorized}
+            disabled={buttonsDisabled}
             className={`rounded-xl overflow-hidden transition ${
-              isTrading || !authorized ? 'opacity-50' : ''
+              buttonsDisabled ? 'opacity-50' : ''
             }`}
           >
             <div className="bg-red-500 text-white py-4 flex items-center justify-center gap-2">
@@ -332,6 +428,12 @@ export default function ManualTrader() {
             </div>
           </button>
         </div>
+
+        {takeProfitReached && (
+          <div className="mt-3 bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center">
+            <span className="text-xs text-green-400 font-medium">🎯 Take profit target reached. Uncheck to continue trading.</span>
+          </div>
+        )}
       </div>
 
       {/* ============ TRADE TYPE PICKER ============ */}
