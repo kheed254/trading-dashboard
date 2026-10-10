@@ -1,12 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  createChart,
-  AreaSeries,
-  type IChartApi,
-  type ISeriesApi,
-  type UTCTimestamp,
-} from 'lightweight-charts';
-import { useTradeStore } from '../lib/trading/store';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDigitStream } from '../lib/deriv';
+import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws';
 
 /* ---------- Config ---------- */
@@ -21,467 +15,286 @@ const MARKET_MAP: Record<string, string> = {
 
 const MARKETS = Object.keys(MARKET_MAP);
 
-const DERIV_WS_URL =
-  'wss://api.derivws.com/trading/v1/options/ws/public';
-
 type TradeTypeKey =
-  | 'accumulators'
-  | 'callput'
-  | 'turbos'
-  | 'multipliers'
-  | 'higherlower'
-  | 'touchnotouch'
-  | 'matchesdiffers'
   | 'evenodd'
-  | 'overunder';
+  | 'matchesdiffers'
+  | 'overunder'
+  | 'callput'
+  | 'higherlower'
+  | 'touchnotouch';
 
-const GROWTH_RATES = [1, 2, 3, 4, 5];
-
-/* Map trade type to Deriv API contract types */
-function resolveContractType(
-  tradeType: TradeTypeKey,
-  direction: 'Rise' | 'Fall'
-): string {
-  switch (tradeType) {
-    case 'callput': return direction === 'Rise' ? 'CALL' : 'PUT';
-    case 'higherlower': return direction === 'Rise' ? 'CALLE' : 'PUTE';
-    case 'touchnotouch': return 'ONETOUCH';
-    case 'matchesdiffers': return 'DIGITDIFF';
-    case 'evenodd': return direction === 'Rise' ? 'DIGITEVEN' : 'DIGITODD';
-    case 'overunder': return direction === 'Rise' ? 'DIGITOVER' : 'DIGITUNDER';
-    default: return 'CALL';
-  }
-}
+const TRADE_TYPE_LABELS: Record<TradeTypeKey, string> = {
+  evenodd: 'Even/Odd',
+  matchesdiffers: 'Matches/Differs',
+  overunder: 'Over/Under',
+  callput: 'Call/Put',
+  higherlower: 'Higher/Lower',
+  touchnotouch: 'Touch/No Touch',
+};
 
 export default function ManualTrader() {
   const [marketName, setMarketName] = useState('Volatility 100 (1s) Index');
-  const [tradeType, setTradeType] = useState<TradeTypeKey>('callput');
-  const [direction, setDirection] = useState<'Rise' | 'Fall'>('Rise');
-  const [growthRate, setGrowthRate] = useState(3);
+  const [tradeType, setTradeType] = useState<TradeTypeKey>('evenodd');
   const [stake, setStake] = useState(10);
-  const [takeProfit, setTakeProfit] = useState(false);
-  const [lastPrice, setLastPrice] = useState<number | null>(null);
-  const [connected, setConnected] = useState(false);
+  const [selectedDigit, setSelectedDigit] = useState(5);
   const [showTypePicker, setShowTypePicker] = useState(false);
-  const [pickerCategory, setPickerCategory] = useState<'all' | 'multipliers' | 'options' | 'accumulators'>('all');
+  const [isTrading, setIsTrading] = useState(false);
 
-  const { placeTrade: placePaperTrade } = useTradeStore();
-  const { authorized, placeTrade: placeRealTrade, openTrades } = useAuthWs();
-
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+  const { authorized, placeTrade } = useAuthWs();
 
   const symbol = MARKET_MAP[marketName];
 
-  /* ---------- Create chart once (dark theme) ---------- */
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
+  /* ---- Live stream using the same hook as BulkTrader ---- */
+  const { currentDigit, digits, connected } = useDigitStream(symbol, 1000);
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: '#0b1c3f' }, // Dark navy matching your header
-        textColor: '#a0aec0',
-      },
-      grid: {
-        vertLines: { color: 'rgba(255,255,255,0.05)' },
-        horzLines: { color: 'rgba(255,255,255,0.05)' },
-      },
-      rightPriceScale: { borderColor: 'rgba(255,255,255,0.1)' },
-      timeScale: { borderColor: 'rgba(255,255,255,0.1)', timeVisible: true },
-    });
+  /* ---- Digit stats ---- */
+  const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-    const series = chart.addSeries(AreaSeries, {
-      lineColor: '#14b8a6',
-      topColor: 'rgba(20, 184, 166, 0.3)',
-      bottomColor: 'rgba(20, 184, 166, 0.02)',
-      lineWidth: 2,
-    });
+  /* ---- Place trade ---- */
+  const handleTrade = async (direction: 'primary' | 'secondary') => {
+    if (!authorized) {
+      alert('Please log in to place trades.');
+      return;
+    }
 
-    chartRef.current = chart;
-    seriesRef.current = series;
+    setIsTrading(true);
 
-    const onResize = () => {
-      if (!chartContainerRef.current) return;
-      chart.applyOptions({
-        width: chartContainerRef.current.clientWidth,
-        height: chartContainerRef.current.clientHeight,
-      });
-    };
-    onResize();
-    window.addEventListener('resize', onResize);
+    // Determine contract type based on trade type & direction
+    let contractType = 'DIGITEVEN';
+    let barrier: string | undefined = undefined;
 
-    return () => {
-      window.removeEventListener('resize', onResize);
-      chart.remove();
-      chartRef.current = null;
-      seriesRef.current = null;
-    };
-  }, []);
+    switch (tradeType) {
+      case 'evenodd':
+        contractType = direction === 'primary' ? 'DIGITEVEN' : 'DIGITODD';
+        break;
+      case 'matchesdiffers':
+        contractType = direction === 'primary' ? 'DIGITMATCH' : 'DIGITDIFF';
+        barrier = String(selectedDigit);
+        break;
+      case 'overunder':
+        contractType = direction === 'primary' ? 'DIGITOVER' : 'DIGITUNDER';
+        barrier = String(selectedDigit);
+        break;
+      case 'callput':
+        contractType = direction === 'primary' ? 'CALL' : 'PUT';
+        break;
+      case 'higherlower':
+        contractType = direction === 'primary' ? 'CALLE' : 'PUTE';
+        break;
+      case 'touchnotouch':
+        contractType = direction === 'primary' ? 'ONETOUCH' : 'NOTOUCH';
+        break;
+    }
 
-  /* ---------- Stream ticks ---------- */
-  useEffect(() => {
-    const ws = new WebSocket(DERIV_WS_URL);
-    let closed = false;
+    // Digit contracts use 1 tick. CALL/PUT need min 2 ticks.
+    const isDigit = contractType.startsWith('DIGIT');
+    const duration = isDigit ? 1 : 2;
+    const durationUnit = 't';
 
-    setConnected(false);
-    setLastPrice(null);
-
-    ws.onopen = () => {
-      setConnected(true);
-      const end = Math.floor(Date.now() / 1000);
-      const start = end - 60 * 300;
-
-      ws.send(
-        JSON.stringify({
-          ticks_history: symbol,
-          adjust_start_time: 1,
-          count: 300,
-          end: 'latest',
-          start,
-          style: 'ticks',
-          subscribe: 1,
-        })
-      );
-    };
-
-    ws.onmessage = (event) => {
-      if (closed) return;
-      try {
-        const data = JSON.parse(event.data);
-
-        if (data.msg_type === 'history' && data.history) {
-          const times: number[] = data.history.times;
-          const prices: number[] = data.history.prices;
-          const points = times.map((t, i) => ({
-            time: t as UTCTimestamp,
-            value: Number(prices[i]),
-          }));
-          seriesRef.current?.setData(points);
-          if (points.length > 0) {
-            setLastPrice(points[points.length - 1].value);
-          }
-          chartRef.current?.timeScale().fitContent();
-        }
-
-        if (data.msg_type === 'tick' && data.tick) {
-          const p = Number(data.tick.quote);
-          setLastPrice(p);
-          seriesRef.current?.update({
-            time: data.tick.epoch as UTCTimestamp,
-            value: p,
-          });
-        }
-      } catch { /* ignore */ }
-    };
-
-    ws.onerror = () => setConnected(false);
-    ws.onclose = () => setConnected(false);
-
-    return () => {
-      closed = true;
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        }
-      } catch { /* ignore */ }
-      ws.close();
-    };
-  }, [symbol]);
-
-  /* ---------- Buy ---------- */
-  const handleBuy = () => {
-    const contractType = resolveContractType(tradeType, direction);
-    // Use 2 ticks for CALL/PUT, 1 tick for digits
-    const duration = ['DIGITEVEN', 'DIGITODD', 'DIGITDIFF', 'DIGITOVER', 'DIGITUNDER'].includes(contractType) ? 1 : 2;
-
-    if (authorized) {
-      placeRealTrade({
+    try {
+      await placeTrade({
         symbol,
         contractType,
         stake,
         duration,
-        durationUnit: 't',
+        durationUnit,
+        barrier,
       });
-      console.log('[Manual Trader] Real trade sent:', { symbol, contractType, stake });
-      return;
-    }
-
-    // Paper trade fallback
-    const id = placePaperTrade({
-      market: marketName,
-      symbol,
-      type: 'rise_fall',
-      direction: direction,
-      stake,
-      ticks: duration,
-      entryPrice: lastPrice ?? undefined,
-    });
-
-    if (id) {
-      alert(`Paper trade placed (not logged in).\n${marketName}\nStake: $${stake.toFixed(2)}`);
+      console.log(`[Manual Trader] Placed ${contractType}`, { symbol, stake, barrier });
+    } catch (error) {
+      console.error('Manual Trader error:', error);
+    } finally {
+      setIsTrading(false);
     }
   };
 
-  const openCount = openTrades.filter((t) => !t.is_sold).length;
+  /* ---- Button labels & colors ---- */
+  const primaryLabel =
+    tradeType === 'evenodd' ? 'Even' :
+    tradeType === 'matchesdiffers' ? 'Matches' :
+    tradeType === 'overunder' ? 'Over' :
+    tradeType === 'callput' ? 'Rise' :
+    tradeType === 'higherlower' ? 'Higher' : 'Touch';
+
+  const secondaryLabel =
+    tradeType === 'evenodd' ? 'Odd' :
+    tradeType === 'matchesdiffers' ? 'Differs' :
+    tradeType === 'overunder' ? 'Under' :
+    tradeType === 'callput' ? 'Fall' :
+    tradeType === 'higherlower' ? 'Lower' : 'No Touch';
 
   return (
-    <div className="flex flex-col md:flex-row h-[calc(100vh-56px)] overflow-hidden bg-[#0b1c3f]">
-      {/* ============ CHART (left) ============ */}
-      <div className="flex-1 flex flex-col relative min-h-[400px]">
-        {/* Market dropdown overlay */}
-        <div className="absolute top-4 left-4 z-10 bg-[#0b1c3f] border border-white/10 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
-          <div>
+    <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0e27] overflow-hidden">
+      {/* ============ TOP: MARKET SELECTOR ============ */}
+      <div className="px-4 py-3 border-b border-white/5 bg-[#141832]">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center">
+            <span className="text-white text-xs font-bold">100</span>
+          </div>
+          <div className="flex-1">
             <select
               value={marketName}
               onChange={(e) => setMarketName(e.target.value)}
-              className="font-semibold text-white bg-transparent outline-none cursor-pointer text-sm"
+              className="font-semibold text-white bg-transparent outline-none cursor-pointer text-base w-full"
             >
               {MARKETS.map((m) => (
-                <option key={m} value={m} className="bg-[#0b1c3f]">{m}</option>
+                <option key={m} value={m} className="bg-[#141832]">{m}</option>
               ))}
             </select>
-            <div className="text-xs text-gray-400 flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-              {lastPrice !== null ? lastPrice.toFixed(2) : '—'}
-              <span className="text-gray-500">{connected ? 'live' : 'connecting'}</span>
+              <span className="text-gray-500">live</span>
             </div>
           </div>
         </div>
-
-        {/* Chart */}
-        <div ref={chartContainerRef} className="w-full h-full" />
       </div>
 
-      {/* ============ TRADE TICKET (right) ============ */}
-      <aside className="w-full md:w-80 shrink-0 border-l border-white/10 bg-[#0b1c3f] flex flex-col overflow-y-auto">
-        <div className="p-4">
-          <div className="text-xs text-teal-400 underline mb-3 cursor-pointer">
-            Learn about this trade type
+      {/* ============ MIDDLE: DIGIT GAUGES ============ */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 relative">
+        {/* 10 circular gauges in 2 rows of 5 */}
+        <div className="w-full max-w-md">
+          {/* Row 1: 0-4 */}
+          <div className="grid grid-cols-5 gap-3 mb-6">
+            {digitStats.slice(0, 5).map((d) => (
+              <DigitGauge
+                key={d.digit}
+                digit={d.digit}
+                pct={d.pct}
+                isCurrent={d.digit === currentDigit}
+              />
+            ))}
           </div>
+          {/* Row 2: 5-9 */}
+          <div className="grid grid-cols-5 gap-3">
+            {digitStats.slice(5, 10).map((d) => (
+              <DigitGauge
+                key={d.digit}
+                digit={d.digit}
+                pct={d.pct}
+                isCurrent={d.digit === currentDigit}
+              />
+            ))}
+          </div>
+        </div>
 
+        {/* Left/Right arrows */}
+        <button className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">‹</button>
+        <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">›</button>
+      </div>
+
+      {/* ============ BOTTOM: TRADE TICKET ============ */}
+      <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6">
+        {/* Trade type + Digit selector row */}
+        <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => setShowTypePicker(true)}
-            className="w-full flex items-center justify-between px-3 py-3 bg-white/5 border border-white/10 rounded-md mb-4 hover:bg-white/10 transition"
+            className="flex-1 flex items-center gap-3 px-3 py-3 bg-[#0a0e27] border border-white/10 rounded-lg text-left"
           >
-            <span className="font-semibold text-white text-sm capitalize">
-              {tradeType === 'callput' ? 'Call/Put' :
-               tradeType === 'higherlower' ? 'Higher/Lower' :
-               tradeType === 'touchnotouch' ? 'Touch/No Touch' :
-               tradeType === 'matchesdiffers' ? 'Matches/Differs' :
-               tradeType === 'evenodd' ? 'Even/Odd' :
-               tradeType === 'overunder' ? 'Over/Under' :
-               tradeType.charAt(0).toUpperCase() + tradeType.slice(1)}
+            <span className="text-lg">
+              {tradeType === 'evenodd' ? '🎯' :
+               tradeType === 'matchesdiffers' ? '🔢' :
+               tradeType === 'overunder' ? '📊' :
+               tradeType === 'callput' ? '📈' :
+               tradeType === 'higherlower' ? '↕️' : '👆'}
+            </span>
+            <span className="font-semibold text-white text-sm flex-1">
+              {TRADE_TYPE_LABELS[tradeType]}
             </span>
             <span className="text-gray-400">›</span>
           </button>
 
-          {/* Direction toggle for Rise/Fall, Even/Odd, Over/Under */}
-          {(tradeType === 'callput' || tradeType === 'evenodd' || tradeType === 'overunder' || tradeType === 'higherlower') && (
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setDirection('Rise')}
-                className={`flex-1 py-2.5 rounded-md text-sm font-semibold transition ${
-                  direction === 'Rise' ? 'bg-teal-500 text-white' : 'bg-white/5 text-gray-400 border border-white/10'
-                }`}
-              >
-                {tradeType === 'evenodd' ? 'Even' : tradeType === 'overunder' ? 'Over' : 'Rise'}
-              </button>
-              <button
-                onClick={() => setDirection('Fall')}
-                className={`flex-1 py-2.5 rounded-md text-sm font-semibold transition ${
-                  direction === 'Fall' ? 'bg-red-500 text-white' : 'bg-white/5 text-gray-400 border border-white/10'
-                }`}
-              >
-                {tradeType === 'evenodd' ? 'Odd' : tradeType === 'overunder' ? 'Under' : 'Fall'}
-              </button>
-            </div>
-          )}
-
-          {/* Live trade status */}
-          {openCount > 0 && (
-            <div className="mb-4 bg-teal-500/10 border border-teal-500/30 rounded-md p-3">
-              <div className="text-xs font-semibold text-teal-400">
-                {openCount} live trade{openCount !== 1 ? 's' : ''} open
-              </div>
-            </div>
-          )}
-
-          {/* Growth rate (only for accumulators/multipliers) */}
-          {(tradeType === 'accumulators' || tradeType === 'multipliers') && (
-            <div className="mb-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-400">Growth rate</span>
-              </div>
-              <div className="grid grid-cols-5 gap-1">
-                {GROWTH_RATES.map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setGrowthRate(r)}
-                    className={`py-2 text-sm font-medium rounded-md transition ${
-                      growthRate === r
-                        ? 'bg-teal-500 text-white font-semibold'
-                        : 'bg-white/5 border border-white/10 text-gray-400 hover:bg-white/10'
-                    }`}
-                  >
-                    {r}%
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Stake */}
-          <div className="mb-4">
-            <div className="text-sm text-gray-400 mb-2">Stake</div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setStake((s) => Math.max(1, s - 1))}
-                className="w-9 h-9 rounded-md border border-white/10 text-gray-400 hover:bg-white/5"
-              >
-                −
-              </button>
+          {/* Digit selector (only for digit-based trades) */}
+          {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
+            <div className="flex items-center gap-1 px-3 py-3 bg-[#0a0e27] border border-white/10 rounded-lg">
+              <span className="text-xs text-gray-400">Digit:</span>
               <input
                 type="number"
-                value={stake}
-                onChange={(e) => setStake(Number(e.target.value))}
-                className="flex-1 bg-white/5 border border-white/10 rounded-md px-3 py-2 text-center text-sm font-semibold text-white outline-none"
+                min={0}
+                max={9}
+                value={selectedDigit}
+                onChange={(e) => setSelectedDigit(Math.max(0, Math.min(9, Number(e.target.value))))}
+                className="w-8 bg-transparent text-white font-bold text-center outline-none"
               />
-              <button
-                onClick={() => setStake((s) => s + 1)}
-                className="w-9 h-9 rounded-md border border-white/10 text-gray-400 hover:bg-white/5"
-              >
-                +
-              </button>
-              <select className="bg-white/5 border border-white/10 rounded-md px-2 py-2 text-sm text-gray-300 outline-none cursor-pointer">
-                <option className="bg-[#0b1c3f]">USD</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Take Profit */}
-          <label className="flex items-center gap-2 mb-4 text-sm text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={takeProfit}
-              onChange={(e) => setTakeProfit(e.target.checked)}
-              className="w-4 h-4 accent-teal-500"
-            />
-            Take profit
-          </label>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 gap-3 text-xs mb-4 py-3 border-t border-b border-white/10">
-            <div>
-              <div className="text-gray-500">Max. payout</div>
-              <div className="font-semibold text-white mt-1">6,000.00 USD</div>
-            </div>
-            <div className="text-right">
-              <div className="text-gray-500">Max. ticks</div>
-              <div className="font-semibold text-white mt-1">85 ticks</div>
-            </div>
-          </div>
-
-          {/* Buy Button */}
-          <button
-            onClick={handleBuy}
-            className="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-4 rounded-md flex items-center justify-center gap-3 transition"
-          >
-            <span className="text-lg">📈</span>
-            <span>{authorized ? 'Buy (Demo)' : 'Buy'}</span>
-          </button>
-
-          {!authorized && (
-            <div className="mt-2 text-[10px] text-gray-500 text-center">
-              Not logged in — paper trade mode
             </div>
           )}
         </div>
-      </aside>
 
-      {/* ============ TRADE TYPE PICKER MODAL (Dark Bottom Sheet) ============ */}
+        {/* Stake row */}
+        <div className="flex items-center justify-between px-4 py-3 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
+          <span className="text-xs text-gray-400">Risk Disclaimer</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-white text-base">{stake.toFixed(2)} USD</span>
+            <span className="text-xs text-gray-500">Stake</span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Primary Button (Even / Matches / Over / Rise) */}
+          <button
+            onClick={() => handleTrade('primary')}
+            disabled={isTrading || !authorized}
+            className={`rounded-xl overflow-hidden transition ${
+              isTrading || !authorized ? 'opacity-50' : ''
+            }`}
+          >
+            <div className="bg-teal-500 text-white py-4 flex items-center justify-center gap-2">
+              <span className="text-lg">
+                {tradeType === 'matchesdiffers' ? '❄️' : tradeType === 'overunder' ? '📈' : '🎲'}
+              </span>
+              <span className="font-bold text-lg">{primaryLabel}</span>
+            </div>
+            <div className="bg-teal-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
+              <span>Payout</span>
+              <span className="font-bold">{(stake * 1.818).toFixed(2)} USD</span>
+            </div>
+          </button>
+
+          {/* Secondary Button (Odd / Differs / Under / Fall) */}
+          <button
+            onClick={() => handleTrade('secondary')}
+            disabled={isTrading || !authorized}
+            className={`rounded-xl overflow-hidden transition ${
+              isTrading || !authorized ? 'opacity-50' : ''
+            }`}
+          >
+            <div className="bg-red-500 text-white py-4 flex items-center justify-center gap-2">
+              <span className="text-lg">
+                {tradeType === 'matchesdiffers' ? '❄️' : tradeType === 'overunder' ? '📉' : '🎲'}
+              </span>
+              <span className="font-bold text-lg">{secondaryLabel}</span>
+            </div>
+            <div className="bg-red-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
+              <span>Payout</span>
+              <span className="font-bold">
+                {(stake * (tradeType === 'matchesdiffers' ? 1.053 : 1.818)).toFixed(2)} USD
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* ============ TRADE TYPE PICKER (Dark Bottom Sheet) ============ */}
       {showTypePicker && (
         <div
-          className="fixed inset-0 bg-black/70 flex items-end md:items-center justify-center z-50"
+          className="fixed inset-0 bg-black/70 flex items-end justify-center z-50"
           onClick={() => setShowTypePicker(false)}
         >
           <div
-            className="bg-[#0b1c3f] rounded-t-2xl md:rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-auto border-t border-white/10 md:border"
+            className="bg-[#141832] rounded-t-2xl w-full max-w-2xl max-h-[80vh] overflow-auto border-t border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-[#0b1c3f] p-5 border-b border-white/10 z-10">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white">Trade types</h2>
-                <button onClick={() => setShowTypePicker(false)} className="text-gray-400 text-2xl leading-none">×</button>
-              </div>
-              <div className="mt-4 text-xs text-gray-500 border border-white/10 rounded-md px-3 py-2.5">
-                Learn more about trade types ›
-              </div>
+            <div className="sticky top-0 bg-[#141832] p-4 border-b border-white/10 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold text-white">Trade types</h2>
+              <button onClick={() => setShowTypePicker(false)} className="text-gray-400 text-2xl leading-none">×</button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4">
-              {/* Category sidebar */}
-              <div className="hidden md:block border-r border-white/10 py-2">
-                {[
-                  { id: 'all', label: 'All' },
-                  { id: 'multipliers', label: 'Multipliers' },
-                  { id: 'options', label: 'Options', isNew: true },
-                  { id: 'accumulators', label: 'Accumulators', isNew: true },
-                ].map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setPickerCategory(c.id as any)}
-                    className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 transition ${
-                      pickerCategory === c.id ? 'bg-white/10 text-teal-400' : 'text-gray-400 hover:bg-white/5'
-                    }`}
-                  >
-                    <span>{c.label}</span>
-                    {c.isNew && (
-                      <span className="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded">NEW</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* Trade Type Cards */}
-              <div className="md:col-span-3 p-4 space-y-4">
-                {(pickerCategory === 'all' || pickerCategory === 'accumulators') && (
-                  <TypeSection title="Accumulators" isNew>
-                    <TypeCard label="Accumulators" icon="📈" onClick={() => { setTradeType('accumulators'); setShowTypePicker(false); }} />
-                  </TypeSection>
-                )}
-
-                {(pickerCategory === 'all' || pickerCategory === 'options') && (
-                  <>
-                    <TypeSection title="Vanillas" isNew>
-                      <TypeCard label="Call/Put" icon="📊" onClick={() => { setTradeType('callput'); setShowTypePicker(false); }} />
-                    </TypeSection>
-                    <TypeSection title="Turbos" isNew>
-                      <TypeCard label="Turbos" icon="📉" onClick={() => { setTradeType('turbos'); setShowTypePicker(false); }} />
-                    </TypeSection>
-                    <TypeSection title="Ups & Downs">
-                      <TypeCard label="Higher/Lower" icon="↕️" onClick={() => { setTradeType('higherlower'); setShowTypePicker(false); }} />
-                    </TypeSection>
-                    <TypeSection title="Touch & No Touch">
-                      <TypeCard label="Touch/No Touch" icon="👆" onClick={() => { setTradeType('touchnotouch'); setShowTypePicker(false); }} />
-                    </TypeSection>
-                    <TypeSection title="Digits">
-                      <div className="grid grid-cols-1 gap-2">
-                        <TypeCard label="Matches/Differs" icon="🔢" onClick={() => { setTradeType('matchesdiffers'); setShowTypePicker(false); }} />
-                        <TypeCard label="Even/Odd" icon="➗" onClick={() => { setTradeType('evenodd'); setShowTypePicker(false); }} />
-                        <TypeCard label="Over/Under" icon="📊" onClick={() => { setTradeType('overunder'); setShowTypePicker(false); }} />
-                      </div>
-                    </TypeSection>
-                  </>
-                )}
-
-                {(pickerCategory === 'all' || pickerCategory === 'multipliers') && (
-                  <TypeSection title="Multipliers">
-                    <TypeCard label="Multipliers" icon="✖️" onClick={() => { setTradeType('multipliers'); setShowTypePicker(false); }} />
-                  </TypeSection>
-                )}
-              </div>
+            <div className="p-4 space-y-3">
+              <TypeCard label="Even/Odd" icon="🎯" onClick={() => { setTradeType('evenodd'); setShowTypePicker(false); }} />
+              <TypeCard label="Matches/Differs" icon="🔢" onClick={() => { setTradeType('matchesdiffers'); setShowTypePicker(false); }} />
+              <TypeCard label="Over/Under" icon="📊" onClick={() => { setTradeType('overunder'); setShowTypePicker(false); }} />
+              <TypeCard label="Call/Put (Rise/Fall)" icon="📈" onClick={() => { setTradeType('callput'); setShowTypePicker(false); }} />
+              <TypeCard label="Higher/Lower" icon="↕️" onClick={() => { setTradeType('higherlower'); setShowTypePicker(false); }} />
+              <TypeCard label="Touch/No Touch" icon="👆" onClick={() => { setTradeType('touchnotouch'); setShowTypePicker(false); }} />
             </div>
           </div>
         </div>
@@ -490,26 +303,59 @@ export default function ManualTrader() {
   );
 }
 
-/* ---------- Small components ---------- */
-function TypeSection({ title, isNew, children }: { title: string; isNew?: boolean; children: React.ReactNode }) {
+/* ---------- Digit Gauge Component ---------- */
+function DigitGauge({
+  digit,
+  pct,
+  isCurrent,
+}: {
+  digit: number;
+  pct: number;
+  isCurrent: boolean;
+}) {
+  const r = 22;
+  const strokeDasharray = 2 * Math.PI * r;
+  const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
+
   return (
-    <div>
-      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-2">
-        {title}
-        {isNew && <span className="text-[9px] bg-red-500 text-white px-1.5 py-0.5 rounded">NEW</span>}
+    <div className="flex flex-col items-center">
+      <div className="relative w-16 h-16">
+        <svg viewBox="0 0 56 56" className="w-full h-full -rotate-90">
+          {/* Background circle */}
+          <circle cx="28" cy="28" r={r} fill="none" stroke="#1e2347" strokeWidth="3" />
+          {/* Progress circle */}
+          <circle
+            cx="28" cy="28" r={r}
+            fill="none"
+            stroke={isCurrent ? '#3b82f6' : '#14b8a6'}
+            strokeWidth="3"
+            strokeDasharray={strokeDasharray}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className={`text-base font-bold ${isCurrent ? 'text-blue-400' : 'text-white'}`}>
+            {digit}
+          </span>
+        </div>
+        {isCurrent && (
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-red-500" />
+        )}
       </div>
-      {children}
+      <div className="text-[10px] text-gray-400 mt-1">{pct.toFixed(1)}%</div>
     </div>
   );
 }
 
+/* ---------- Type Card ---------- */
 function TypeCard({ label, icon, onClick }: { label: string; icon: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-md text-left transition"
+      className="w-full flex items-center gap-3 px-4 py-4 bg-[#0a0e27] hover:bg-[#1a1f3d] border border-white/10 rounded-lg text-left transition"
     >
-      <span className="text-lg">{icon}</span>
+      <span className="text-xl">{icon}</span>
       <span className="text-sm font-medium text-white">{label}</span>
     </button>
   );
