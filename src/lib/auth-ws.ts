@@ -145,7 +145,7 @@ export function useAuthWs(): AuthWsState {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
 
-  // Proposal subscription state (for live payouts)
+  // Proposal subscription state
   const proposalSubIdRef = useRef<number>(12000);
   const proposalSubCallbacksRef = useRef<Record<number, (payout: number) => void>>({});
   const activeProposalIdsRef = useRef<string[]>([]);
@@ -183,26 +183,32 @@ export function useAuthWs(): AuthWsState {
           } : prev);
         }
 
-        // Handle one-shot proposal waiters (for placeTrade)
+        // One-shot proposal waiters (for placeTrade)
         if (data.msg_type === 'proposal' && data.req_id) {
           const waiter = proposalWaitersRef.current[data.req_id];
           if (waiter) { waiter(data); delete proposalWaitersRef.current[data.req_id]; }
         }
 
-        // Handle subscription proposals (for live payout display)
+        // Subscription proposal responses (for live payout display)
         if (data.msg_type === 'proposal' && data.req_id && data.req_id >= 12000) {
+          console.log('[StingerFX] Proposal sub response:', { req_id: data.req_id, error: data.error, payout: data.proposal?.payout });
+          
           if (data.error) {
             console.warn('[StingerFX] Proposal sub error:', data.error.message);
             return;
           }
           const prop = data.proposal;
           if (prop && prop.id) {
-            // Track this proposal ID for later cleanup
             if (!activeProposalIdsRef.current.includes(prop.id)) {
               activeProposalIdsRef.current.push(prop.id);
             }
             const cb = proposalSubCallbacksRef.current[data.req_id];
-            if (cb) cb(Number(prop.payout || 0));
+            if (cb) {
+              cb(Number(prop.payout || 0));
+              console.log('[StingerFX] Payout callback fired:', prop.payout);
+            } else {
+              console.warn('[StingerFX] No callback for req_id', data.req_id);
+            }
           }
         }
 
@@ -259,7 +265,9 @@ export function useAuthWs(): AuthWsState {
           console.log('[StingerFX] Portfolio:', (data.portfolio.contracts || []).length, 'open contracts');
         }
 
-        if (data.error) console.warn('[StingerFX] API error:', data.error);
+        if (data.error && data.msg_type !== 'proposal') {
+          console.warn('[StingerFX] API error:', data.error);
+        }
       };
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
@@ -426,7 +434,6 @@ export function useAuthWs(): AuthWsState {
   const unsubscribeProposal = () => {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
-      // Forget all active subscription proposals
       activeProposalIdsRef.current.forEach((id) => {
         try {
           ws.send(JSON.stringify({ forget: id }));
