@@ -130,7 +130,14 @@ export function useAuthWs(): AuthWsState {
   const proposalWaitersRef = useRef<Record<number, (data: any) => void>>({});
   const proposalIdCounterRef = useRef(9000);
 
+  // FIX: Added reconnect refs
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const accountIdRef = useRef<string | null>(null);
+
   const connectWithAccount = async (accountId: string) => {
+    // FIX: Store account ID for reconnection
+    accountIdRef.current = accountId;
+
     const token = tokenRef.current;
     if (!token) return;
 
@@ -225,7 +232,18 @@ export function useAuthWs(): AuthWsState {
       };
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
-      ws.onclose = () => console.log('[StingerFX] WebSocket closed');
+      
+      // FIX: Auto-reconnect on close
+      ws.onclose = () => {
+        console.log('[StingerFX] WebSocket closed');
+        if (accountIdRef.current) {
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            console.log('[StingerFX] Attempting to reconnect...');
+            connectWithAccount(accountIdRef.current!);
+          }, 3000);
+        }
+      };
 
       setAuthorized(true);
       setUser((prev) => prev ? { ...prev, activeAccountId: accountId } : prev);
@@ -263,7 +281,11 @@ export function useAuthWs(): AuthWsState {
       }
     })();
 
-    return () => { try { wsRef.current?.close(); } catch {} wsRef.current = null; };
+    return () => { 
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      try { wsRef.current?.close(); } catch {} 
+      wsRef.current = null; 
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -328,7 +350,6 @@ export function useAuthWs(): AuthWsState {
         return; 
       }
       const prop = resp.proposal;
-      // FIX: Ensure proposal exists before trying to buy it
       if (!prop || !prop.id) {
         console.warn('[StingerFX] No proposal returned in response');
         return;
