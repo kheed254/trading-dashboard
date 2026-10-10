@@ -53,7 +53,6 @@ export default function BulkTrader() {
 
   // Get the last 8 tick parities for the E/O sequence display
   const recentParity = useMemo(() => {
-    // We need the last 8 digits. digits is likely an array of numbers.
     const recent = digits.slice(-8);
     return recent.map((d) => (d % 2 === 0 ? 'E' : 'O'));
   }, [digits]);
@@ -154,8 +153,8 @@ export default function BulkTrader() {
         )}
       </div>
 
-      {/* DIGIT CIRCLES 0-9 - Circular gauges style */}
-      <div className="flex justify-between gap-1 mb-6">
+      {/* DIGIT CIRCLES 0-9 - Circular gauges style, fit to screen */}
+      <div className="flex justify-between gap-0.5 mb-6">
         {digitStats.map((d) => {
           const isCurrent = d.digit === currentDigit;
           const strokeDasharray = 2 * Math.PI * 20; // Circumference for r=20
@@ -163,7 +162,7 @@ export default function BulkTrader() {
           
           return (
             <div key={d.digit} className="flex flex-col items-center flex-1">
-              <div className="relative w-10 h-10">
+              <div className="relative w-9 h-9">
                 <svg viewBox="0 0 48 48" className="w-full h-full -rotate-90">
                   {/* Background circle */}
                   <circle cx="24" cy="24" r="20" fill="none" stroke="#e5e7eb" strokeWidth="6" />
@@ -234,7 +233,7 @@ export default function BulkTrader() {
         </div>
       </div>
 
-      {/* EVEN / ODD BARS - Slightly larger blocks */}
+      {/* EVEN / ODD BARS */}
       <div className="grid grid-cols-2 gap-2 mb-4">
         <button 
           onClick={() => handleTrade('EVEN')}
