@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws';
@@ -33,19 +33,21 @@ const TRADE_TYPE_LABELS: Record<TradeTypeKey, string> = {
 };
 
 export default function ManualTrader() {
-  // FIX: Default to 'Volatility 100 Index' (R_100) which supports all digit contracts
   const [marketName, setMarketName] = useState('Volatility 100 Index');
   const [tradeType, setTradeType] = useState<TradeTypeKey>('evenodd');
   const [selectedDigit, setSelectedDigit] = useState(5);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
-  // Fixed stake for now (design was showing a fixed amount)
+  // Live payouts from Deriv
+  const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
+  const [secondaryPayout, setSecondaryPayout] = useState<number | null>(null);
+
+  // Fixed stake
   const stake = 10;
 
-  const { authorized, placeTrade } = useAuthWs();
+  const { authorized, placeTrade, subscribeProposal, unsubscribeProposal } = useAuthWs();
 
-  // Cast symbol to 'any' to bypass strict type check for useDigitStream
   const symbol = MARKET_MAP[marketName] as any;
 
   /* ---- Live stream using the same hook as BulkTrader ---- */
@@ -53,6 +55,47 @@ export default function ManualTrader() {
 
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
+
+  /* ---- Resolve contract types based on trade type ---- */
+  const getContractTypes = () => {
+    switch (tradeType) {
+      case 'evenodd': return { primary: 'DIGITEVEN', secondary: 'DIGITODD', barrier: undefined };
+      case 'matchesdiffers': return { primary: 'DIGITMATCH', secondary: 'DIGITDIFF', barrier: String(selectedDigit) };
+      case 'overunder': return { primary: 'DIGITOVER', secondary: 'DIGITUNDER', barrier: String(selectedDigit) };
+      case 'callput': return { primary: 'CALL', secondary: 'PUT', barrier: undefined };
+      case 'higherlower': return { primary: 'CALLE', secondary: 'PUTE', barrier: undefined };
+      case 'touchnotouch': return { primary: 'ONETOUCH', secondary: 'NOTOUCH', barrier: undefined };
+    }
+  };
+
+  /* ---- FIX: Subscribe to live payouts when params change ---- */
+  useEffect(() => {
+    if (!authorized) return;
+
+    const { primary, secondary, barrier } = getContractTypes();
+    const isDigit = primary.startsWith('DIGIT');
+    const duration = isDigit ? 1 : 2;
+
+    // Subscribe to PRIMARY contract payout
+    subscribeProposal(
+      { symbol, contractType: primary, stake, duration, durationUnit: 't', barrier },
+      (payout) => setPrimaryPayout(payout)
+    );
+
+    // Small delay before secondary to avoid ID collision
+    const secondaryTimeout = setTimeout(() => {
+      subscribeProposal(
+        { symbol, contractType: secondary, stake, duration, durationUnit: 't', barrier },
+        (payout) => setSecondaryPayout(payout)
+      );
+    }, 500);
+
+    return () => {
+      clearTimeout(secondaryTimeout);
+      unsubscribeProposal();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorized, symbol, tradeType, selectedDigit, stake]);
 
   /* ---- Place trade ---- */
   const handleTrade = async (direction: 'primary' | 'secondary') => {
@@ -63,32 +106,8 @@ export default function ManualTrader() {
 
     setIsTrading(true);
 
-    // Determine contract type based on trade type & direction
-    let contractType = 'DIGITEVEN';
-    let barrier: string | undefined = undefined;
-
-    switch (tradeType) {
-      case 'evenodd':
-        contractType = direction === 'primary' ? 'DIGITEVEN' : 'DIGITODD';
-        break;
-      case 'matchesdiffers':
-        contractType = direction === 'primary' ? 'DIGITMATCH' : 'DIGITDIFF';
-        barrier = String(selectedDigit);
-        break;
-      case 'overunder':
-        contractType = direction === 'primary' ? 'DIGITOVER' : 'DIGITUNDER';
-        barrier = String(selectedDigit);
-        break;
-      case 'callput':
-        contractType = direction === 'primary' ? 'CALL' : 'PUT';
-        break;
-      case 'higherlower':
-        contractType = direction === 'primary' ? 'CALLE' : 'PUTE';
-        break;
-      case 'touchnotouch':
-        contractType = direction === 'primary' ? 'ONETOUCH' : 'NOTOUCH';
-        break;
-    }
+    const { primary, secondary, barrier } = getContractTypes();
+    const contractType = direction === 'primary' ? primary : secondary;
 
     // Digit contracts use 1 tick. CALL/PUT need min 2 ticks.
     const isDigit = contractType.startsWith('DIGIT');
@@ -112,7 +131,7 @@ export default function ManualTrader() {
     }
   };
 
-  /* ---- Button labels & colors ---- */
+  /* ---- Button labels ---- */
   const primaryLabel =
     tradeType === 'evenodd' ? 'Even' :
     tradeType === 'matchesdiffers' ? 'Matches' :
@@ -225,6 +244,7 @@ export default function ManualTrader() {
           </div>
         </div>
 
+        {/* Action Buttons with LIVE PAYOUTS */}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => handleTrade('primary')}
@@ -241,7 +261,9 @@ export default function ManualTrader() {
             </div>
             <div className="bg-teal-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
               <span>Payout</span>
-              <span className="font-bold">{(stake * 1.818).toFixed(2)} USD</span>
+              <span className="font-bold">
+                {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
+              </span>
             </div>
           </button>
 
@@ -261,7 +283,7 @@ export default function ManualTrader() {
             <div className="bg-red-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
               <span>Payout</span>
               <span className="font-bold">
-                {(stake * (tradeType === 'matchesdiffers' ? 1.053 : 1.818)).toFixed(2)} USD
+                {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
               </span>
             </div>
           </button>
