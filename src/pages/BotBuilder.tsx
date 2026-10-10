@@ -423,7 +423,6 @@ export default function BotBuilder() {
   return (
     <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-hidden md:overflow-visible relative">
 
-      {/* ============ MOBILE: Collapsible Bottom Sheet Report ============ */}
       {mobileReportOpen && (
         <div
           className="md:hidden fixed inset-0 bg-black/30 z-20"
@@ -436,9 +435,7 @@ export default function BotBuilder() {
           mobileReportOpen ? 'h-[70vh]' : 'h-[64px]'
         }`}
       >
-        {/* Collapsible header bar with Run button on the right */}
         <div className="relative flex items-center justify-between px-3 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
-          {/* Left: Reset */}
           <button
             onClick={handleReset}
             className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
@@ -446,7 +443,6 @@ export default function BotBuilder() {
             Reset
           </button>
 
-          {/* Center: Chevron (absolute) */}
           <button
             onClick={() => setMobileReportOpen(!mobileReportOpen)}
             className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
@@ -465,7 +461,6 @@ export default function BotBuilder() {
             </svg>
           </button>
 
-          {/* Right: Run/Stop button */}
           <button
             onClick={toggleRun}
             className={`text-xs font-bold px-4 py-2 rounded-md transition flex items-center gap-1.5 ${
