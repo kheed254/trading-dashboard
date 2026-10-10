@@ -33,7 +33,24 @@ const TRADE_TYPES = [
   'Digits › Even/Odd',
   'Digits › Over/Under',
 ];
-const CONTRACT_TYPES = ['Both', 'Rise only', 'Fall only'];
+
+/* FIX: Contract type options change based on trade type */
+function getContractTypeOptions(tradeType: string): string[] {
+  if (tradeType.includes('Rise') || tradeType.includes('Fall')) return ['Both', 'Rise only', 'Fall only'];
+  if (tradeType.includes('Higher') || tradeType.includes('Lower')) return ['Both', 'Higher', 'Lower'];
+  if (tradeType.includes('Touch')) return ['Both', 'Touch', 'No Touch'];
+  if (tradeType.includes('In/Out')) return ['Both', 'Ends Between', 'Ends Outside'];
+  if (tradeType.includes('Matches')) return ['Both', 'Matches', 'Differs'];
+  if (tradeType.includes('Even')) return ['Both', 'Even', 'Odd'];
+  if (tradeType.includes('Over')) return ['Both', 'Over', 'Under'];
+  return ['Both'];
+}
+
+/* Helper: does this trade type need a digit barrier? */
+function needsDigitBarrier(tradeType: string): boolean {
+  return tradeType.includes('Matches') || tradeType.includes('Over');
+}
+
 const CANDLE_INTERVALS = ['1 minute', '2 minutes', '5 minutes', '15 minutes', '1 hour'];
 const RUN_ONCE_SET = ['Initial Amount', 'Win Amount', 'Expected Profit', 'Stop Loss', 'Martingale Level'];
 const RUN_ONCE_DEFAULTS: Record<string, string | number> = {
@@ -66,6 +83,7 @@ type Block = {
   market?: string;
   tradeType?: string;
   contractType?: string;
+  digitBarrier?: number;
   candleInterval?: string;
   restartBuySell?: boolean;
   restartLastTrade?: boolean;
@@ -73,7 +91,7 @@ type Block = {
   durationType?: string;
   durationValue?: number;
   stakeType?: string;
-  direction?: 'Rise' | 'Fall';
+  direction?: 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs';
 };
 
 const BLOCK_LABELS: Record<BlockType, string> = {
@@ -92,6 +110,7 @@ const createBlock = (type: BlockType): Block => {
     base.market = 'Volatility 100 (1s) Index';
     base.tradeType = 'Up/Down › Rise/Fall';
     base.contractType = 'Both';
+    base.digitBarrier = 5;
     base.candleInterval = '1 minute';
     base.restartBuySell = true;
     base.restartLastTrade = true;
@@ -104,20 +123,64 @@ const createBlock = (type: BlockType): Block => {
   return base;
 };
 
-function resolveContractType(tradeType: string, direction: 'Rise' | 'Fall') {
+/* FIX: Smarter contract type resolution */
+function resolveContractType(
+  tradeType: string,
+  contractType: string,
+  digitBarrier: number,
+  fallbackDirection: string
+): { contractType: string; barrier?: string } {
   const t = tradeType.toLowerCase();
-  if (t.includes('rise') || t.includes('fall'))
-    return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' } as { contractType: string; barrier?: string };
-  if (t.includes('higher')) return { contractType: 'CALLE' };
-  if (t.includes('lower')) return { contractType: 'PUTE' };
-  if (t.includes('touch')) return { contractType: 'ONETOUCH' };
-  if (t.includes('no touch')) return { contractType: 'NOTOUCH' };
-  if (t.includes('matches') || t.includes('differs')) return { contractType: 'DIGITDIFF', barrier: '5' };
-  if (t.includes('even')) return { contractType: 'DIGITEVEN' };
-  if (t.includes('odd')) return { contractType: 'DIGITODD' };
-  if (t.includes('over')) return { contractType: 'DIGITOVER', barrier: '4' };
-  if (t.includes('under')) return { contractType: 'DIGITUNDER', barrier: '5' };
-  return { contractType: direction === 'Rise' ? 'CALL' : 'PUT' };
+  const c = contractType.toLowerCase();
+
+  // Rise/Fall
+  if (t.includes('rise') || t.includes('fall')) {
+    let dir: 'Rise' | 'Fall' = 'Rise';
+    if (c.includes('fall')) dir = 'Fall';
+    else if (c.includes('rise')) dir = 'Rise';
+    else if (fallbackDirection === 'Fall') dir = 'Fall';
+    return { contractType: dir === 'Rise' ? 'CALL' : 'PUT' };
+  }
+
+  // Higher/Lower
+  if (t.includes('higher') || t.includes('lower')) {
+    if (c.includes('lower')) return { contractType: 'PUTE' };
+    if (c.includes('higher')) return { contractType: 'CALLE' };
+    return { contractType: 'CALLE' };
+  }
+
+  // Touch/No Touch
+  if (t.includes('touch')) {
+    if (c.includes('no touch')) return { contractType: 'NOTOUCH' };
+    if (c.includes('touch')) return { contractType: 'ONETOUCH' };
+    return { contractType: 'ONETOUCH' };
+  }
+
+  // In/Out
+  if (t.includes('in/out')) {
+    if (c.includes('outside')) return { contractType: 'EXPIRYRANGE' };
+    return { contractType: 'EXPIRYMISS' };
+  }
+
+  // Digits
+  if (t.includes('matches')) {
+    if (c.includes('matches')) return { contractType: 'DIGITMATCH', barrier: String(digitBarrier) };
+    if (c.includes('differs')) return { contractType: 'DIGITDIFF', barrier: String(digitBarrier) };
+    return { contractType: 'DIGITDIFF', barrier: String(digitBarrier) };
+  }
+  if (t.includes('even')) {
+    if (c.includes('even')) return { contractType: 'DIGITEVEN' };
+    if (c.includes('odd')) return { contractType: 'DIGITODD' };
+    // Both → random
+    return { contractType: Math.random() < 0.5 ? 'DIGITEVEN' : 'DIGITODD' };
+  }
+  if (t.includes('over')) {
+    if (c.includes('over')) return { contractType: 'DIGITOVER', barrier: String(digitBarrier) };
+    if (c.includes('under')) return { contractType: 'DIGITUNDER', barrier: String(digitBarrier) };
+    return { contractType: 'DIGITOVER', barrier: String(digitBarrier) };
+  }
+
+  return { contractType: 'CALL' };
 }
 
 function resolveDuration(durationType: string, durationValue: number) {
@@ -289,13 +352,21 @@ export default function BotBuilder() {
     const symbol = SYMBOL_MAP[market];
     if (!symbol) { addJournal(`Unknown market: ${market}`, 'loss'); return; }
     const tradeType = tp?.tradeType || 'Up/Down › Rise/Fall';
-    const direction = purchase?.direction || 'Rise';
-    const { contractType, barrier } = resolveContractType(tradeType, direction);
-    const { duration, durationUnit } = resolveDuration(tp?.durationType || 'Ticks', tp?.durationValue ?? 1);
+    const contractType = tp?.contractType || 'Both';
+    const digitBarrier = tp?.digitBarrier ?? 5;
+    const fallbackDirection = purchase?.direction || 'Rise';
+    const { contractType: derivContractType, barrier } = resolveContractType(tradeType, contractType, digitBarrier, fallbackDirection);
+    let { duration, durationUnit } = resolveDuration(tp?.durationType || 'Ticks', tp?.durationValue ?? 1);
+
+    // FIX: CALL/PUT need at least 2 ticks
+    if ((derivContractType === 'CALL' || derivContractType === 'PUT') && durationUnit === 't' && duration < 2) {
+      duration = 2;
+    }
+
     const baseStake = getBaseStake();
     const stake = currentStake ?? baseStake;
-    addJournal(`Placing ${contractType} on ${symbol} — $${stake.toFixed(2)}${consecutiveLossesRef.current > 0 ? ` (Martingale lvl ${consecutiveLossesRef.current})` : ''}`, 'buy');
-    placeTrade({ symbol, contractType, stake, duration, durationUnit, barrier });
+    addJournal(`Placing ${derivContractType} on ${symbol} — $${stake.toFixed(2)}${consecutiveLossesRef.current > 0 ? ` (Martingale lvl ${consecutiveLossesRef.current})` : ''}`, 'buy');
+    placeTrade({ symbol, contractType: derivContractType, stake, duration, durationUnit, barrier });
     setTimeout(() => setBotStats((prev) => ({ ...prev, runs: prev.runs + 1 })), 500);
   };
 
@@ -367,38 +438,15 @@ export default function BotBuilder() {
 
   const renderMobileReport = () => (
     <>
-      {/* Single row: chevron centered, Reset on right, subtle status on left */}
       <div className="relative flex items-center bg-white px-4 py-3 border-b border-gray-100">
         <div className="text-xs text-gray-400 min-w-0">
           {botRunning ? `${botStats.runs} runs` : ''}
         </div>
-
-        <button
-          onClick={() => setMobileReportOpen(false)}
-          className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
-          title="Back to canvas"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
+        <button onClick={() => setMobileReportOpen(false)} className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700" title="Back to canvas">
+          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
         </button>
-
-        <button
-          onClick={handleReset}
-          className="ml-auto text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
-        >
-          Reset
-        </button>
+        <button onClick={handleReset} className="ml-auto text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700">Reset</button>
       </div>
-
       <ReportBody {...reportProps} />
     </>
   );
@@ -587,6 +635,9 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
 /* ---------- BlockRenderer ---------- */
 function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: Block; index: number; onToggle: () => void; onDelete: () => void; onUpdate: (patch: Partial<Block>) => void }) {
   const label = BLOCK_LABELS[block.type];
+  const contractTypeOptions = getContractTypeOptions(block.tradeType || '');
+  const showDigitInput = needsDigitBarrier(block.tradeType || '') && block.contractType !== 'Both' && (block.contractType === 'Matches' || block.contractType === 'Differs' || block.contractType === 'Over' || block.contractType === 'Under');
+
   return (
     <div className="group relative w-fit">
       <button onClick={onToggle} className="bg-[#0b3d91] hover:bg-[#0a357f] text-white rounded-t-md px-3 py-2 text-sm font-semibold w-fit flex items-center gap-2 transition">
@@ -598,8 +649,37 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
           {block.type === 'trade_params' && (
             <div className="space-y-2">
               <SelectField label="Market" value={block.market ?? ''} onChange={(v) => onUpdate({ market: v })} groups={MARKETS} />
-              <SelectField label="Trade Type" value={block.tradeType ?? ''} onChange={(v) => onUpdate({ tradeType: v })} options={TRADE_TYPES} />
-              <SelectField label="Contract Type" value={block.contractType ?? ''} onChange={(v) => onUpdate({ contractType: v })} options={CONTRACT_TYPES} />
+              <SelectField
+                label="Trade Type"
+                value={block.tradeType ?? ''}
+                onChange={(v) => {
+                  // FIX: reset contractType when trade type changes
+                  const newOptions = getContractTypeOptions(v);
+                  const current = block.contractType || 'Both';
+                  const valid = newOptions.includes(current) ? current : 'Both';
+                  onUpdate({ tradeType: v, contractType: valid });
+                }}
+                options={TRADE_TYPES}
+              />
+              <SelectField
+                label="Contract Type"
+                value={block.contractType ?? 'Both'}
+                onChange={(v) => onUpdate({ contractType: v })}
+                options={contractTypeOptions}
+              />
+              {showDigitInput && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-gray-500 w-36 md:w-44 shrink-0">Digit (0-9):</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={9}
+                    value={block.digitBarrier ?? 5}
+                    onChange={(e) => onUpdate({ digitBarrier: Math.max(0, Math.min(9, Number(e.target.value))) })}
+                    className="bg-gray-100 px-2 py-1 rounded text-gray-700 outline-none w-16"
+                  />
+                </div>
+              )}
               <SelectField label="Default Candle Interval" value={block.candleInterval ?? ''} onChange={(v) => onUpdate({ candleInterval: v })} options={CANDLE_INTERVALS} />
               <CheckboxRow label="Restart buy/sell on error:" checked={block.restartBuySell ?? true} onChange={(c) => onUpdate({ restartBuySell: c })} />
               <CheckboxRow label="Restart last trade on error:" checked={block.restartLastTrade ?? true} onChange={(c) => onUpdate({ restartLastTrade: c })} />
@@ -637,8 +717,17 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
           {block.type === 'purchase' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Purchase</span>
-              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value as 'Rise' | 'Fall' })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
-                <option value="Rise">Rise</option><option value="Fall">Fall</option>
+              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value as any })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
+                {/* FIX: Dynamic direction options based on parent trade type */}
+                {(() => {
+                  const tp = block.tradeType || '';
+                  if (tp.includes('Even')) return (<><option value="Even">Even</option><option value="Odd">Odd</option></>);
+                  if (tp.includes('Over')) return (<><option value="Over">Over</option><option value="Under">Under</option></>);
+                  if (tp.includes('Matches')) return (<><option value="Matches">Matches</option><option value="Differs">Differs</option></>);
+                  if (tp.includes('Higher')) return (<><option value="Higher">Higher</option><option value="Lower">Lower</option></>);
+                  if (tp.includes('Touch')) return (<><option value="Touch">Touch</option><option value="No Touch">No Touch</option></>);
+                  return (<><option value="Rise">Rise</option><option value="Fall">Fall</option></>);
+                })()}
               </select>
             </div>
           )}
