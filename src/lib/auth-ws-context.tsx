@@ -139,7 +139,6 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
   const isConnectingRef = useRef(false);
-  // FIX: Track whether we're intentionally switching accounts
   const isSwitchingRef = useRef(false);
 
   const proposalSubIdRef = useRef<number>(12000);
@@ -177,7 +176,12 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
         let data: any;
         try { data = JSON.parse(event.data); } catch { return; }
 
+        // FIX: Ignore stale balance during account switch
         if (data.msg_type === 'balance' && data.balance) {
+          if (isSwitchingRef.current) {
+            console.log('[StingerFX] Ignoring stale balance update during switch');
+            return;
+          }
           const b = data.balance;
           setUser((prev) => prev ? {
             ...prev,
@@ -259,7 +263,6 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
 
-      // FIX: Skip auto-reconnect when switching accounts
       ws.onclose = () => {
         console.log('[StingerFX] WebSocket closed');
         isConnectingRef.current = false;
@@ -328,7 +331,6 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
     const acct = accountsRef.current.find((a) => a.account_id === accountId);
     if (!acct) return;
 
-    // FIX: Flag the switch so onclose doesn't trigger reconnect
     isSwitchingRef.current = true;
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
 
@@ -343,12 +345,9 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
     setOpenTrades([]);
     setStatement([]);
 
-    // Force a clean state
     isConnectingRef.current = false;
-
     connectWithAccount(accountId);
 
-    // Clear the switching flag after the new connection is established
     setTimeout(() => {
       isSwitchingRef.current = false;
     }, 2000);
