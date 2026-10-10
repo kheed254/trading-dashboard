@@ -33,7 +33,8 @@ const TRADE_TYPE_LABELS: Record<TradeTypeKey, string> = {
 };
 
 export default function ManualTrader() {
-  const [marketName, setMarketName] = useState('Volatility 100 (1s) Index');
+  // FIX: Default to 'Volatility 100 Index' (R_100) which supports all digit contracts
+  const [marketName, setMarketName] = useState('Volatility 100 Index');
   const [tradeType, setTradeType] = useState<TradeTypeKey>('evenodd');
   const [selectedDigit, setSelectedDigit] = useState(5);
   const [showTypePicker, setShowTypePicker] = useState(false);
