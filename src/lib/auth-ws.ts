@@ -130,8 +130,9 @@ export function useAuthWs(): AuthWsState {
   const proposalWaitersRef = useRef<Record<number, (data: any) => void>>({});
   const proposalIdCounterRef = useRef(9000);
 
-  // FIX: Added reconnect refs
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: Changed NodeJS.Timeout to ReturnType<typeof setTimeout>
+  // to fix Vercel's TypeScript build error.
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
 
   const connectWithAccount = async (accountId: string) => {
