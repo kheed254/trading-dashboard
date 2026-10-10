@@ -68,7 +68,7 @@ export default function ManualTrader() {
     }
   };
 
-  /* ---- FIX: Subscribe to live payouts when params change ---- */
+  /* ---- FIX: Subscribe to live payouts after WebSocket is ready ---- */
   useEffect(() => {
     if (!authorized) return;
 
@@ -76,21 +76,24 @@ export default function ManualTrader() {
     const isDigit = primary.startsWith('DIGIT');
     const duration = isDigit ? 1 : 2;
 
-    // Subscribe to PRIMARY contract payout
-    subscribeProposal(
-      { symbol, contractType: primary, stake, duration, durationUnit: 't', barrier },
-      (payout) => setPrimaryPayout(payout)
-    );
+    // Wait 1s for the WebSocket to fully open before subscribing
+    const primaryTimeout = setTimeout(() => {
+      subscribeProposal(
+        { symbol, contractType: primary, stake, duration, durationUnit: 't', barrier },
+        (payout) => setPrimaryPayout(payout)
+      );
+    }, 1000);
 
-    // Small delay before secondary to avoid ID collision
+    // Wait an extra 500ms before secondary to avoid ID collision
     const secondaryTimeout = setTimeout(() => {
       subscribeProposal(
         { symbol, contractType: secondary, stake, duration, durationUnit: 't', barrier },
         (payout) => setSecondaryPayout(payout)
       );
-    }, 500);
+    }, 1500);
 
     return () => {
+      clearTimeout(primaryTimeout);
       clearTimeout(secondaryTimeout);
       unsubscribeProposal();
     };
