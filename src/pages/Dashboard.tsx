@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import SignalCard from '../components/SignalCard';
 import { useMultiTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws';
 
+/* ---------- Signals data (kept from your original) ---------- */
 const signals = [
   {
     id: 1,
@@ -70,15 +72,18 @@ const signals = [
   },
 ];
 
-const filterPills = [
-  { label: 'Load Bot', color: '#1a2b6d' },
-  { label: 'Premium Bots', color: '#fbbf24' },
-  { label: 'Free Bots', color: '#26b0a3' },
-  { label: 'Analysis Tool', color: '#a855f7' },
+/* ---------- Quick Action Buttons ---------- */
+const QUICK_ACTIONS = [
+  { label: 'Manual Trader', to: '/manual_trader', icon: '📈', color: 'from-teal-500 to-teal-600' },
+  { label: 'Bulk Trader', to: '/bulk_trader', icon: '🎯', color: 'from-blue-500 to-blue-600' },
+  { label: 'Bot Builder', to: '/bot_builder', icon: '🤖', color: 'from-purple-500 to-purple-600' },
+  { label: 'Trading Bots', to: '/trading_bots', icon: '📊', color: 'from-amber-500 to-amber-600' },
+  { label: 'Charts', to: '/charts', icon: '📉', color: 'from-pink-500 to-pink-600' },
+  { label: 'Cashier', to: '/cashier', icon: '💳', color: 'from-indigo-500 to-indigo-600' },
 ];
 
 export default function Dashboard() {
-  const { authorized, user, error: authError } = useAuthWs();
+  const { authorized, user, error: authError, statement, requestStatement } = useAuthWs();
 
   const { ticks, connected } = useMultiTicks([
     '1HZ30V',
@@ -87,7 +92,7 @@ export default function Dashboard() {
     '1HZ10V',
   ]);
 
-  /* Debug log while we verify the auth hook — safe to remove later */
+  /* Debug log */
   useEffect(() => {
     if (authorized && user) {
       console.log(
@@ -104,77 +109,130 @@ export default function Dashboard() {
     }
   }, [authorized, user, authError]);
 
+  /* Request statement on mount if authorized */
+  useEffect(() => {
+    if (authorized) {
+      requestStatement(10);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorized]);
+
+  /* Format money */
+  const fmtMoney = (n: number) =>
+    n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  /* Format relative time */
+  const fmtTime = (ts: number) => {
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    return d.toLocaleDateString();
+  };
+
   return (
-    <>
-      {/* SEARCH BAR */}
-      <div className="max-w-3xl mx-auto mt-8 px-4">
-        <div className="flex items-center bg-white rounded-full shadow-sm border border-gray-200 overflow-hidden">
-          <select className="bg-transparent px-4 py-3 text-sm text-gray-600 outline-none border-r border-gray-200">
-            <option>All</option>
-            <option>Volatility</option>
-            <option>Boom/Crash</option>
-          </select>
-          <input
-            type="text"
-            placeholder="Search for a bot..."
-            className="flex-1 px-4 py-3 text-sm outline-none"
-          />
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z"
-              />
-            </svg>
-          </button>
+    <div className="min-h-screen bg-gray-50 pb-24 md:pb-8">
+      {/* ============ TOP: ACCOUNT SUMMARY ============ */}
+      <section className="bg-gradient-to-br from-[#0b1c3f] via-[#12295a] to-[#0b3d91] text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          {/* Greeting */}
+          <div className="mb-6">
+            <h1 className="text-2xl md:text-3xl font-bold">
+              Welcome back{user?.loginid ? `, ${user.loginid}` : ''} 👋
+            </h1>
+            <p className="text-white/70 text-sm mt-1">
+              Here's your trading overview
+            </p>
+          </div>
+
+          {/* Account summary cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Balance card */}
+            <div className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-5 md:col-span-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-white/60 uppercase tracking-wider font-medium">
+                  Account Balance
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  user?.isVirtual 
+                    ? 'bg-amber-500 text-white' 
+                    : 'bg-green-500 text-white'
+                }`}>
+                  {user?.isVirtual ? 'DEMO' : 'REAL'}
+                </span>
+              </div>
+              <div className="text-3xl md:text-4xl font-bold font-mono tabular-nums">
+                {user ? fmtMoney(user.balance) : '—'}
+                <span className="text-lg text-white/70 ml-2">{user?.currency || 'USD'}</span>
+              </div>
+              <div className="flex items-center gap-2 mt-3 text-xs text-white/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+                <span>Connected to Deriv via WebSocket</span>
+              </div>
+            </div>
+
+            {/* Account info card */}
+            <div className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-5">
+              <div className="text-xs text-white/60 uppercase tracking-wider font-medium mb-2">
+                Account
+              </div>
+              <div className="text-sm font-semibold truncate">
+                {user?.loginid || 'Not logged in'}
+              </div>
+              <div className="text-xs text-white/60 mt-1">
+                {user?.accounts.length || 0} accounts linked
+              </div>
+              <div className="mt-4 flex items-center gap-2 text-xs">
+                <span className={`w-2 h-2 rounded-full ${authorized ? 'bg-green-400' : 'bg-red-400'}`} />
+                <span className="text-white/70">
+                  {authorized ? 'Authenticated' : 'Not authenticated'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Actions Grid */}
+          <div className="mt-6">
+            <div className="text-xs text-white/60 uppercase tracking-wider font-medium mb-3">
+              Quick Actions
+            </div>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+              {QUICK_ACTIONS.map((action) => (
+                <Link
+                  key={action.to}
+                  to={action.to}
+                  className={`bg-gradient-to-br ${action.color} rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 hover:scale-105 transition shadow-lg`}
+                >
+                  <span className="text-2xl">{action.icon}</span>
+                  <span className="text-[10px] md:text-xs font-semibold text-white text-center leading-tight">
+                    {action.label}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* FILTER PILLS */}
-      <div className="max-w-5xl mx-auto mt-6 px-4 flex flex-wrap justify-center gap-3">
-        {filterPills.map((pill) => (
-          <button
-            key={pill.label}
-            className="flex items-center gap-2 bg-white border-2 rounded-lg px-5 py-2.5 font-medium text-navy"
-            style={{ borderColor: pill.color }}
-          >
-            <span
-              className="w-4 h-4 rounded-sm"
-              style={{ backgroundColor: pill.color }}
-            />
-            {pill.label}
-          </button>
-        ))}
-      </div>
-
-      {/* LIVE SIGNALS */}
-      <main className="max-w-5xl mx-auto mt-8 mb-16 px-4 py-6 bg-teal-50/40 rounded-2xl">
-        <div className="flex items-center justify-between mb-1">
+      {/* ============ MIDDLE: LIVE SIGNALS ============ */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                connected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            />
+            <span className={`w-2.5 h-2.5 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
             <h2 className="text-xl font-semibold text-navy">
               Live Trading Signals
             </h2>
+            <span className="text-sm text-gray-400">
+              ({signals.length})
+            </span>
           </div>
-          <div className="text-sm text-gray-600">
+          <div className="text-sm text-gray-500">
             {connected ? '● live' : '○ offline'}
           </div>
         </div>
-        <p className="text-sm text-gray-500 mb-5">
-          {signals.length} live signals
-        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {signals.map((s) => {
@@ -188,9 +246,7 @@ export default function Dashboard() {
               for (let i = 1; i < history.length; i++) {
                 if (history[i] > history[i - 1]) ups++;
               }
-              liveConfidence = Math.round(
-                (ups / (history.length - 1)) * 100
-              );
+              liveConfidence = Math.round((ups / (history.length - 1)) * 100);
             }
 
             return (
@@ -204,6 +260,50 @@ export default function Dashboard() {
           })}
         </div>
       </main>
-    </>
+
+      {/* ============ BOTTOM: RECENT ACTIVITY ============ */}
+      {authorized && statement.length > 0 && (
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 pb-8">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h2 className="text-lg font-semibold text-navy">Recent Activity</h2>
+              <Link
+                to="/reports"
+                className="text-xs text-teal-600 hover:underline font-medium"
+              >
+                View all →
+              </Link>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {statement.slice(0, 5).map((tx) => {
+                const isPositive = tx.amount > 0;
+                return (
+                  <div key={tx.transaction_id} className="px-5 py-3 flex items-center justify-between hover:bg-gray-50 transition">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        isPositive ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                      }`}>
+                        {isPositive ? '↓' : '↑'}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-navy capitalize truncate">
+                          {tx.action_type.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-mono">
+                          {fmtTime(tx.transaction_time)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className={`text-sm font-bold font-mono ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                      {isPositive ? '+' : ''}{fmtMoney(tx.amount)} {tx.currency}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
