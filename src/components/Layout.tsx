@@ -104,7 +104,6 @@ export default function Layout() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [accountsExpanded, setAccountsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<'real' | 'demo' | null>(null);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false); // FIXED: Added mobile nav state
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -145,7 +144,6 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* FIXED: Changed z-30 to z-40 to ensure header stays above content */}
       <header className="bg-navy text-white sticky top-0 z-40">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           <div className="flex items-center gap-3 min-w-0">
@@ -169,17 +167,6 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* FIXED: Added mobile navigation hamburger button */}
-            <button
-              onClick={() => setMobileNavOpen(true)}
-              className="md:hidden p-2 text-white hover:bg-white/10 rounded-md"
-              title="Menu"
-            >
-              <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-
             {authorized && user ? (
               <div className="relative">
                 <button
@@ -305,28 +292,26 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* FIXED: Added pointer-events-auto to ensure clickability */}
-        <nav className="bg-navy border-t border-white/5 hidden md:block pointer-events-auto">
-          <div className="overflow-x-auto tab-scroll">
-            <div className="flex items-center gap-0.5 text-[13px] px-2">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.to === '/dashboard'}
-                  className={({ isActive }) =>
-                    `px-3 py-3 whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer ${
-                      isActive
-                        ? 'border-b-2 border-red-500 text-white font-medium'
-                        : 'text-white/80 hover:text-brand-teal'
-                    }`
-                  }
-                >
-                  <item.Icon />
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
+        {/* FIXED: Navigation bar is now visible on ALL screens and horizontally scrollable */}
+        <nav className="bg-navy border-t border-white/5 pointer-events-auto overflow-x-auto tab-scroll">
+          <div className="flex items-center gap-0.5 text-[13px] px-2 min-w-max">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/dashboard'}
+                className={({ isActive }) =>
+                  `px-3 py-3 whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer ${
+                    isActive
+                      ? 'border-b-2 border-red-500 text-white font-medium'
+                      : 'text-white/80 hover:text-brand-teal'
+                  }`
+                }
+              >
+                <item.Icon />
+                {item.label}
+              </NavLink>
+            ))}
           </div>
         </nav>
 
@@ -379,46 +364,6 @@ export default function Layout() {
           </button>
         </div>
       </div>
-
-      {/* ===== MOBILE NAVIGATION DRAWER (FIXED) ===== */}
-      {mobileNavOpen && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black/50 z-[60] md:hidden" 
-            onClick={() => setMobileNavOpen(false)} 
-          />
-          <div className="fixed top-0 left-0 bottom-0 w-64 bg-navy text-white z-[70] md:hidden flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-white/10">
-              <span className="font-bold text-lg">Menu</span>
-              <button 
-                onClick={() => setMobileNavOpen(false)} 
-                className="text-white/70 text-2xl leading-none"
-              >
-                &times;
-              </button>
-            </div>
-            <nav className="flex-1 overflow-y-auto py-2">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-3 text-sm transition ${
-                      isActive 
-                        ? 'bg-white/10 text-brand-teal font-medium' 
-                        : 'text-white/80 hover:bg-white/5'
-                    }`
-                  }
-                >
-                  <item.Icon />
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
-          </div>
-        </>
-      )}
     </div>
   );
 }
