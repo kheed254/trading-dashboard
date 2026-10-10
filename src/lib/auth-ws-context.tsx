@@ -139,6 +139,8 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
   const isConnectingRef = useRef(false);
+  // FIX: Track whether we're intentionally switching accounts
+  const isSwitchingRef = useRef(false);
 
   const proposalSubIdRef = useRef<number>(12000);
   const proposalSubCallbacksRef = useRef<Record<number, (payout: number) => void>>({});
@@ -257,9 +259,16 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
 
+      // FIX: Skip auto-reconnect when switching accounts
       ws.onclose = () => {
         console.log('[StingerFX] WebSocket closed');
         isConnectingRef.current = false;
+
+        if (isSwitchingRef.current) {
+          console.log('[StingerFX] Skipping reconnect (account switch in progress)');
+          return;
+        }
+
         if (accountIdRef.current) {
           if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = setTimeout(() => {
@@ -291,6 +300,7 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
         console.log('[StingerFX] Accounts fetched:', accounts);
         if (!accounts.length) { setError('No trading accounts found on this profile.'); return; }
         const primary = accounts.find((a) => a.account_type === 'demo') || accounts[0];
+        console.log('[StingerFX] Selected primary account:', primary.account_type, primary.loginid);
         setUser({
           loginid: primary.loginid || primary.account_id,
           balance: primary.balance,
@@ -317,6 +327,11 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
   const switchAccount = (accountId: string) => {
     const acct = accountsRef.current.find((a) => a.account_id === accountId);
     if (!acct) return;
+
+    // FIX: Flag the switch so onclose doesn't trigger reconnect
+    isSwitchingRef.current = true;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+
     setUser((prev) => prev ? {
       ...prev,
       loginid: acct.loginid || acct.account_id,
@@ -327,7 +342,16 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
     } : prev);
     setOpenTrades([]);
     setStatement([]);
+
+    // Force a clean state
+    isConnectingRef.current = false;
+
     connectWithAccount(accountId);
+
+    // Clear the switching flag after the new connection is established
+    setTimeout(() => {
+      isSwitchingRef.current = false;
+    }, 2000);
   };
 
   const requestStatement = (limit = 20) => {
