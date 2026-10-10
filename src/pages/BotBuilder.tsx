@@ -34,7 +34,6 @@ const TRADE_TYPES = [
   'Digits › Over/Under',
 ];
 
-/* FIX: Contract type options change based on trade type */
 function getContractTypeOptions(tradeType: string): string[] {
   if (tradeType.includes('Rise') || tradeType.includes('Fall')) return ['Both', 'Rise only', 'Fall only'];
   if (tradeType.includes('Higher') || tradeType.includes('Lower')) return ['Both', 'Higher', 'Lower'];
@@ -46,7 +45,6 @@ function getContractTypeOptions(tradeType: string): string[] {
   return ['Both'];
 }
 
-/* Helper: does this trade type need a digit barrier? */
 function needsDigitBarrier(tradeType: string): boolean {
   return tradeType.includes('Matches') || tradeType.includes('Over');
 }
@@ -91,7 +89,7 @@ type Block = {
   durationType?: string;
   durationValue?: number;
   stakeType?: string;
-  direction?: 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs';
+  direction?: string;
 };
 
 const BLOCK_LABELS: Record<BlockType, string> = {
@@ -123,7 +121,6 @@ const createBlock = (type: BlockType): Block => {
   return base;
 };
 
-/* FIX: Smarter contract type resolution */
 function resolveContractType(
   tradeType: string,
   contractType: string,
@@ -133,7 +130,6 @@ function resolveContractType(
   const t = tradeType.toLowerCase();
   const c = contractType.toLowerCase();
 
-  // Rise/Fall
   if (t.includes('rise') || t.includes('fall')) {
     let dir: 'Rise' | 'Fall' = 'Rise';
     if (c.includes('fall')) dir = 'Fall';
@@ -141,28 +137,18 @@ function resolveContractType(
     else if (fallbackDirection === 'Fall') dir = 'Fall';
     return { contractType: dir === 'Rise' ? 'CALL' : 'PUT' };
   }
-
-  // Higher/Lower
   if (t.includes('higher') || t.includes('lower')) {
     if (c.includes('lower')) return { contractType: 'PUTE' };
-    if (c.includes('higher')) return { contractType: 'CALLE' };
     return { contractType: 'CALLE' };
   }
-
-  // Touch/No Touch
   if (t.includes('touch')) {
     if (c.includes('no touch')) return { contractType: 'NOTOUCH' };
-    if (c.includes('touch')) return { contractType: 'ONETOUCH' };
     return { contractType: 'ONETOUCH' };
   }
-
-  // In/Out
   if (t.includes('in/out')) {
     if (c.includes('outside')) return { contractType: 'EXPIRYRANGE' };
     return { contractType: 'EXPIRYMISS' };
   }
-
-  // Digits
   if (t.includes('matches')) {
     if (c.includes('matches')) return { contractType: 'DIGITMATCH', barrier: String(digitBarrier) };
     if (c.includes('differs')) return { contractType: 'DIGITDIFF', barrier: String(digitBarrier) };
@@ -171,7 +157,6 @@ function resolveContractType(
   if (t.includes('even')) {
     if (c.includes('even')) return { contractType: 'DIGITEVEN' };
     if (c.includes('odd')) return { contractType: 'DIGITODD' };
-    // Both → random
     return { contractType: Math.random() < 0.5 ? 'DIGITEVEN' : 'DIGITODD' };
   }
   if (t.includes('over')) {
@@ -179,7 +164,6 @@ function resolveContractType(
     if (c.includes('under')) return { contractType: 'DIGITUNDER', barrier: String(digitBarrier) };
     return { contractType: 'DIGITOVER', barrier: String(digitBarrier) };
   }
-
   return { contractType: 'CALL' };
 }
 
@@ -206,6 +190,8 @@ export default function BotBuilder() {
   const firstRun = useRef(true);
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // FIX: Collapsible mobile report panel (like derivalyser.com)
   const [mobileReportOpen, setMobileReportOpen] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
@@ -252,7 +238,6 @@ export default function BotBuilder() {
       if (next) {
         consecutiveLossesRef.current = 0;
         setCurrentStake(getBaseStake());
-        if (window.innerWidth < 768) setMobileReportOpen(true);
       }
       setBotRunning(next);
       addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
@@ -358,7 +343,6 @@ export default function BotBuilder() {
     const { contractType: derivContractType, barrier } = resolveContractType(tradeType, contractType, digitBarrier, fallbackDirection);
     let { duration, durationUnit } = resolveDuration(tp?.durationType || 'Ticks', tp?.durationValue ?? 1);
 
-    // FIX: CALL/PUT need at least 2 ticks
     if ((derivContractType === 'CALL' || derivContractType === 'PUT') && durationUnit === 't' && duration < 2) {
       duration = 2;
     }
@@ -436,35 +420,68 @@ export default function BotBuilder() {
     </>
   );
 
-  const renderMobileReport = () => (
-    <>
-      <div className="relative flex items-center bg-white px-4 py-3 border-b border-gray-100">
-        <div className="text-xs text-gray-400 min-w-0">
-          {botRunning ? `${botStats.runs} runs` : ''}
-        </div>
-        <button onClick={() => setMobileReportOpen(false)} className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700" title="Back to canvas">
-          <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9l6 6 6-6" /></svg>
-        </button>
-        <button onClick={handleReset} className="ml-auto text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700">Reset</button>
-      </div>
-      <ReportBody {...reportProps} />
-    </>
-  );
-
   return (
-    <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-visible">
+    <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-hidden md:overflow-visible relative">
+
+      {/* ============ MOBILE: Collapsible Bottom Sheet Report ============ */}
+      {/* Backdrop when expanded */}
       {mobileReportOpen && (
-        <div className="md:hidden fixed inset-0 top-14 bg-white z-20 flex flex-col">
-          {renderMobileReport()}
-        </div>
+        <div
+          className="md:hidden fixed inset-0 bg-black/30 z-20"
+          onClick={() => setMobileReportOpen(false)}
+        />
       )}
+
+      {/* The bottom sheet itself */}
+      <div
+        className={`md:hidden fixed left-0 right-0 bottom-0 bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
+          mobileReportOpen ? 'h-[70vh]' : 'h-[56px]'
+        }`}
+      >
+        {/* Collapse/Expand header bar */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
+          <button
+            onClick={() => setMobileReportOpen(false)}
+            className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
+          >
+            Reset
+          </button>
+          <button
+            onClick={() => setMobileReportOpen(!mobileReportOpen)}
+            className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
+            title={mobileReportOpen ? 'Collapse report' : 'Expand report'}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className={`w-6 h-6 transition-transform ${mobileReportOpen ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 15l-6-6-6 6" />
+            </svg>
+          </button>
+          <div className="text-xs text-gray-500 font-medium">
+            {botRunning ? `Running · ${botStats.runs} runs` : 'Bot idle'}
+          </div>
+        </div>
+
+        {/* Report content — only visible when expanded */}
+        {mobileReportOpen && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <ReportBody {...reportProps} />
+          </div>
+        )}
+      </div>
 
       <aside className="hidden md:flex w-64 shrink-0 border-r border-gray-200 bg-white flex-col">
         {renderSidebar()}
       </aside>
 
-      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden">
-        <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500">
+      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden pb-16 md:pb-0">
+        <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500 flex-shrink-0">
           <button className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Blocks menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
           <button className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Reset blocks" onClick={() => setBlocks([createBlock('trade_params'), createBlock('purchase'), createBlock('sell'), createBlock('restart')])}>↻</button>
           <button className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Load" onClick={handleLoad}>📁</button>
@@ -474,17 +491,16 @@ export default function BotBuilder() {
               <button key={i} className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm">{icon}</button>
             ))}
           </div>
-          <button className="md:hidden ml-auto w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Report" onClick={() => setMobileReportOpen(true)}>📊</button>
           <div className="hidden md:block ml-auto text-xs">
             {savedFlash ? <span className="text-green-600 font-medium">✓ saved</span> : lastSavedAt ? <span className="text-gray-400">{formatAgo(lastSavedAt)}</span> : <span className="text-gray-300">auto-save on</span>}
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 md:p-6 relative pb-24 md:pb-40">
+        <div className="flex-1 overflow-auto p-3 md:p-6 relative">
           {blocks.map((b, i) => (
             <BlockRenderer key={b.id} block={b} index={i + 1} onToggle={() => toggleBlock(b.id)} onDelete={() => removeBlock(b.id)} onUpdate={(patch) => updateBlock(b.id, patch)} />
           ))}
-          <button className="absolute bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center">AI</button>
+          <button className="absolute bottom-20 md:bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center z-10">AI</button>
         </div>
       </main>
 
@@ -528,7 +544,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
 
   return (
     <>
-      <div className="flex border-b border-gray-200 text-sm bg-white">
+      <div className="flex border-b border-gray-200 text-sm bg-white flex-shrink-0">
         {(['summary', 'transactions', 'journal'] as const).map((k) => (
           <button key={k} onClick={() => setDetailTab(k)} className={`flex-1 py-3 capitalize text-center text-sm ${detailTab === k ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-500 hover:text-gray-800'}`}>
             {k === 'summary' ? 'Summary' : k === 'transactions' ? 'Transactions' : 'Journal'}
@@ -620,7 +636,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         )}
       </div>
 
-      <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center bg-white">
+      <div className="border-t border-gray-200 p-4 text-xs grid grid-cols-3 gap-3 text-center bg-white flex-shrink-0">
         <Stat label="Total stake" value={`${botStats.totalStake.toFixed(2)} USD`} />
         <Stat label="Total payout" value={`${botStats.totalPayout.toFixed(2)} USD`} />
         <Stat label="No. of runs" value={String(botStats.runs)} />
@@ -653,7 +669,6 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
                 label="Trade Type"
                 value={block.tradeType ?? ''}
                 onChange={(v) => {
-                  // FIX: reset contractType when trade type changes
                   const newOptions = getContractTypeOptions(v);
                   const current = block.contractType || 'Both';
                   const valid = newOptions.includes(current) ? current : 'Both';
@@ -717,8 +732,7 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
           {block.type === 'purchase' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Purchase</span>
-              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value as any })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
-                {/* FIX: Dynamic direction options based on parent trade type */}
+              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
                 {(() => {
                   const tp = block.tradeType || '';
                   if (tp.includes('Even')) return (<><option value="Even">Even</option><option value="Odd">Odd</option></>);
