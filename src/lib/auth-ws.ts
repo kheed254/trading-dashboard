@@ -57,6 +57,16 @@ export type PlaceTradeInput = {
   currency?: string;
 };
 
+export type ProposalInput = {
+  symbol: string;
+  contractType: string;
+  stake: number;
+  duration: number;
+  durationUnit: string;
+  barrier?: string;
+  currency?: string;
+};
+
 export type AuthWsState = {
   authorized: boolean;
   user: DerivUser | null;
@@ -67,6 +77,8 @@ export type AuthWsState = {
   send: (msg: Record<string, any>) => void;
   switchAccount: (accountId: string) => void;
   placeTrade: (input: PlaceTradeInput) => void;
+  subscribeProposal: (input: ProposalInput, callback: (payout: number) => void) => void;
+  unsubscribeProposal: () => void;
 };
 
 /* ---------- REST helpers ---------- */
@@ -130,15 +142,16 @@ export function useAuthWs(): AuthWsState {
   const proposalWaitersRef = useRef<Record<number, (data: any) => void>>({});
   const proposalIdCounterRef = useRef(9000);
 
-  // FIX: Changed NodeJS.Timeout to ReturnType<typeof setTimeout>
-  // to fix Vercel's TypeScript build error.
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
 
-  const connectWithAccount = async (accountId: string) => {
-    // FIX: Store account ID for reconnection
-    accountIdRef.current = accountId;
+  // Proposal subscription state (for live payouts)
+  const proposalSubIdRef = useRef<number>(12000);
+  const proposalSubCallbacksRef = useRef<Record<number, (payout: number) => void>>({});
+  const activeProposalIdsRef = useRef<string[]>([]);
 
+  const connectWithAccount = async (accountId: string) => {
+    accountIdRef.current = accountId;
     const token = tokenRef.current;
     if (!token) return;
 
@@ -170,12 +183,29 @@ export function useAuthWs(): AuthWsState {
           } : prev);
         }
 
+        // Handle one-shot proposal waiters (for placeTrade)
         if (data.msg_type === 'proposal' && data.req_id) {
           const waiter = proposalWaitersRef.current[data.req_id];
           if (waiter) { waiter(data); delete proposalWaitersRef.current[data.req_id]; }
         }
 
-        // FIX: Changed 9100 to 9000 to catch the first 100 trades
+        // Handle subscription proposals (for live payout display)
+        if (data.msg_type === 'proposal' && data.req_id && data.req_id >= 12000) {
+          if (data.error) {
+            console.warn('[StingerFX] Proposal sub error:', data.error.message);
+            return;
+          }
+          const prop = data.proposal;
+          if (prop && prop.id) {
+            // Track this proposal ID for later cleanup
+            if (!activeProposalIdsRef.current.includes(prop.id)) {
+              activeProposalIdsRef.current.push(prop.id);
+            }
+            const cb = proposalSubCallbacksRef.current[data.req_id];
+            if (cb) cb(Number(prop.payout || 0));
+          }
+        }
+
         if (data.msg_type === 'buy' && data.req_id && data.req_id >= 9000) {
           if (data.error) { console.warn('[StingerFX] Buy error:', data.error); return; }
           const b = data.buy;
@@ -233,8 +263,7 @@ export function useAuthWs(): AuthWsState {
       };
 
       ws.onerror = () => setError('WebSocket error — check your connection.');
-      
-      // FIX: Auto-reconnect on close
+
       ws.onclose = () => {
         console.log('[StingerFX] WebSocket closed');
         if (accountIdRef.current) {
@@ -282,10 +311,10 @@ export function useAuthWs(): AuthWsState {
       }
     })();
 
-    return () => { 
+    return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      try { wsRef.current?.close(); } catch {} 
-      wsRef.current = null; 
+      try { wsRef.current?.close(); } catch {}
+      wsRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -346,9 +375,9 @@ export function useAuthWs(): AuthWsState {
     console.log('[StingerFX] Sending proposal:', proposalReq);
 
     proposalWaitersRef.current[propReqId] = (resp) => {
-      if (resp.error) { 
-        console.warn('[StingerFX] Proposal error:', resp.error.message); 
-        return; 
+      if (resp.error) {
+        console.warn('[StingerFX] Proposal error:', resp.error.message);
+        return;
       }
       const prop = resp.proposal;
       if (!prop || !prop.id) {
@@ -366,6 +395,48 @@ export function useAuthWs(): AuthWsState {
     ws.send(JSON.stringify(proposalReq));
   };
 
+  const subscribeProposal = (input: ProposalInput, callback: (payout: number) => void) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.warn('[StingerFX] subscribeProposal: socket not ready');
+      return;
+    }
+
+    const reqId = ++proposalSubIdRef.current;
+    proposalSubCallbacksRef.current[reqId] = callback;
+
+    const req: Record<string, any> = {
+      proposal: 1,
+      amount: input.stake,
+      basis: 'stake',
+      contract_type: input.contractType,
+      currency: input.currency || 'USD',
+      duration: input.duration,
+      duration_unit: input.durationUnit,
+      underlying_symbol: input.symbol,
+      subscribe: 1,
+      req_id: reqId,
+    };
+    if (input.barrier) req.barrier = input.barrier;
+
+    console.log('[StingerFX] Subscribing to proposal:', req);
+    ws.send(JSON.stringify(req));
+  };
+
+  const unsubscribeProposal = () => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      // Forget all active subscription proposals
+      activeProposalIdsRef.current.forEach((id) => {
+        try {
+          ws.send(JSON.stringify({ forget: id }));
+        } catch { /* ignore */ }
+      });
+    }
+    activeProposalIdsRef.current = [];
+    proposalSubCallbacksRef.current = {};
+  };
+
   return {
     authorized,
     user,
@@ -376,5 +447,7 @@ export function useAuthWs(): AuthWsState {
     send,
     switchAccount,
     placeTrade,
+    subscribeProposal,
+    unsubscribeProposal,
   };
 }
