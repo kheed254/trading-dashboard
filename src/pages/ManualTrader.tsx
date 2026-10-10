@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws';
@@ -35,14 +35,17 @@ const TRADE_TYPE_LABELS: Record<TradeTypeKey, string> = {
 export default function ManualTrader() {
   const [marketName, setMarketName] = useState('Volatility 100 (1s) Index');
   const [tradeType, setTradeType] = useState<TradeTypeKey>('evenodd');
-  const [stake, setStake] = useState(10);
   const [selectedDigit, setSelectedDigit] = useState(5);
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
+  // Fixed stake for now (design was showing a fixed amount)
+  const stake = 10;
+
   const { authorized, placeTrade } = useAuthWs();
 
-  const symbol = MARKET_MAP[marketName];
+  // Cast symbol to 'any' to bypass strict type check for useDigitStream
+  const symbol = MARKET_MAP[marketName] as any;
 
   /* ---- Live stream using the same hook as BulkTrader ---- */
   const { currentDigit, digits, connected } = useDigitStream(symbol, 1000);
@@ -151,9 +154,7 @@ export default function ManualTrader() {
 
       {/* ============ MIDDLE: DIGIT GAUGES ============ */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 relative">
-        {/* 10 circular gauges in 2 rows of 5 */}
         <div className="w-full max-w-md">
-          {/* Row 1: 0-4 */}
           <div className="grid grid-cols-5 gap-3 mb-6">
             {digitStats.slice(0, 5).map((d) => (
               <DigitGauge
@@ -164,7 +165,6 @@ export default function ManualTrader() {
               />
             ))}
           </div>
-          {/* Row 2: 5-9 */}
           <div className="grid grid-cols-5 gap-3">
             {digitStats.slice(5, 10).map((d) => (
               <DigitGauge
@@ -177,14 +177,12 @@ export default function ManualTrader() {
           </div>
         </div>
 
-        {/* Left/Right arrows */}
         <button className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">‹</button>
         <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">›</button>
       </div>
 
       {/* ============ BOTTOM: TRADE TICKET ============ */}
       <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6">
-        {/* Trade type + Digit selector row */}
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => setShowTypePicker(true)}
@@ -203,7 +201,6 @@ export default function ManualTrader() {
             <span className="text-gray-400">›</span>
           </button>
 
-          {/* Digit selector (only for digit-based trades) */}
           {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
             <div className="flex items-center gap-1 px-3 py-3 bg-[#0a0e27] border border-white/10 rounded-lg">
               <span className="text-xs text-gray-400">Digit:</span>
@@ -219,7 +216,6 @@ export default function ManualTrader() {
           )}
         </div>
 
-        {/* Stake row */}
         <div className="flex items-center justify-between px-4 py-3 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
           <span className="text-xs text-gray-400">Risk Disclaimer</span>
           <div className="flex items-center gap-2">
@@ -228,9 +224,7 @@ export default function ManualTrader() {
           </div>
         </div>
 
-        {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2">
-          {/* Primary Button (Even / Matches / Over / Rise) */}
           <button
             onClick={() => handleTrade('primary')}
             disabled={isTrading || !authorized}
@@ -250,7 +244,6 @@ export default function ManualTrader() {
             </div>
           </button>
 
-          {/* Secondary Button (Odd / Differs / Under / Fall) */}
           <button
             onClick={() => handleTrade('secondary')}
             disabled={isTrading || !authorized}
@@ -321,9 +314,7 @@ function DigitGauge({
     <div className="flex flex-col items-center">
       <div className="relative w-16 h-16">
         <svg viewBox="0 0 56 56" className="w-full h-full -rotate-90">
-          {/* Background circle */}
           <circle cx="28" cy="28" r={r} fill="none" stroke="#1e2347" strokeWidth="3" />
-          {/* Progress circle */}
           <circle
             cx="28" cy="28" r={r}
             fill="none"
