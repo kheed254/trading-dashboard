@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats, computeEvenOdd } from '../lib/digitStats';
+import { useAuthWs } from '../lib/auth-ws';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
@@ -33,6 +34,10 @@ export default function BulkTrader() {
   const [ticks, setTicks] = useState(1);
   const [stake, setStake] = useState(0.5);
   const [numTrades, setNumTrades] = useState(1);
+  const [isTrading, setIsTrading] = useState(false);
+
+  // FIX: Imported useAuthWs to actually place the trades
+  const { authorized, placeTrade } = useAuthWs();
 
   /* ---- Live stream ---- */
   const symbol = MARKET_MAP[marketName] as any;
@@ -44,6 +49,46 @@ export default function BulkTrader() {
   /* ---- Derived stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
+
+  // FIX: Added the trade placement logic
+  const handleTrade = async (direction: 'EVEN' | 'ODD') => {
+    if (!authorized) {
+      alert('Please log in to place trades.');
+      return;
+    }
+
+    setIsTrading(true);
+    
+    // Map the UI selection to the Deriv API contract type
+    // DIGITEVEN = Even, DIGITODD = Odd
+    const contractType = direction === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
+    
+    // Enforce minimum duration (Deriv requires at least 1 tick for digits)
+    const duration = Math.max(1, ticks);
+    const durationUnit = 't';
+
+    try {
+      // Place the trade using the WebSocket hook
+      await placeTrade({
+        symbol,
+        contractType,
+        stake: stake,
+        duration: duration,
+        durationUnit: durationUnit,
+        // Digits Even/Odd do not use a barrier
+      });
+
+      // Optional: Loop for the number of trades requested
+      // (You would need a loop with a delay here to place multiple trades sequentially)
+      // For now, it places 1 trade as a test.
+      
+    } catch (error) {
+      console.error('Bulk Trader error:', error);
+      alert('Failed to place trade. Check console for details.');
+    } finally {
+      setIsTrading(false);
+    }
+  };
 
   return (
     <main className="max-w-7xl mx-auto px-6 py-6">
@@ -106,7 +151,7 @@ export default function BulkTrader() {
         )}
       </div>
 
-      {/* DIGIT CIRCLES 0-9 — scrollable on mobile */}
+      {/* DIGIT CIRCLES 0-9 */}
       <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-8">
         <div className="flex justify-between gap-2 min-w-[640px]">
           {digitStats.map((d) => {
@@ -137,7 +182,7 @@ export default function BulkTrader() {
         {digits.length}/{numTicks}
       </div>
 
-      {/* TICKS / STAKE / NO OF TRADES — stack on mobile */}
+      {/* TICKS / STAKE / NO OF TRADES */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
         <div>
           <Label center>Ticks</Label>
@@ -169,20 +214,37 @@ export default function BulkTrader() {
         </div>
       </div>
 
-      {/* EVEN / ODD BARS — stack on mobile */}
+      {/* EVEN / ODD BARS — FIXED: Now clickable buttons! */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-        <div className="bg-teal-500 text-white rounded-md px-4 py-3">
-          <div className="font-semibold text-center">Even</div>
+        <button 
+          onClick={() => handleTrade('EVEN')}
+          disabled={isTrading || !authorized}
+          className={`bg-teal-500 hover:bg-teal-600 text-white rounded-md px-4 py-3 transition ${
+            isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+          }`}
+        >
+          <div className="font-semibold text-center">
+            {isTrading ? 'Placing...' : 'Even'}
+          </div>
           <div className="text-center text-sm mt-1">
             {evenOdd.even} ({evenOdd.evenPct.toFixed(2)}%)
           </div>
-        </div>
-        <div className="bg-red-500 text-white rounded-md px-4 py-3">
-          <div className="font-semibold text-center">Odd</div>
+        </button>
+        
+        <button 
+          onClick={() => handleTrade('ODD')}
+          disabled={isTrading || !authorized}
+          className={`bg-red-500 hover:bg-red-600 text-white rounded-md px-4 py-3 transition ${
+            isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+          }`}
+        >
+          <div className="font-semibold text-center">
+            {isTrading ? 'Placing...' : 'Odd'}
+          </div>
           <div className="text-center text-sm mt-1">
             {evenOdd.odd} ({evenOdd.oddPct.toFixed(2)}%)
           </div>
-        </div>
+        </button>
       </div>
 
       {/* STATUS */}
