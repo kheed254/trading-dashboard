@@ -240,6 +240,7 @@ export default function BotBuilder() {
       if (next) {
         consecutiveLossesRef.current = 0;
         setCurrentStake(getBaseStake());
+        setMobileReportOpen(true);
       }
       setBotRunning(next);
       addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
@@ -371,7 +372,11 @@ export default function BotBuilder() {
   const toggleRun = () => {
     if (!authorized) { alert('Please log in to run the bot.'); return; }
     const next = !botRunning;
-    if (next) { consecutiveLossesRef.current = 0; setCurrentStake(getBaseStake()); }
+    if (next) {
+      consecutiveLossesRef.current = 0;
+      setCurrentStake(getBaseStake());
+      setMobileReportOpen(true);
+    }
     setBotRunning(next);
     addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
   };
@@ -434,13 +439,11 @@ export default function BotBuilder() {
         />
       )}
 
-      {/* Mobile collapsible report sheet */}
       <div
         className={`md:hidden fixed left-0 right-0 bottom-[56px] bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
-          mobileReportOpen ? 'h-[70vh]' : 'h-[56px]'
+          mobileReportOpen ? 'h-[calc(100vh-140px)]' : 'h-[56px]'
         }`}
       >
-        {/* Sheet header: Reset (left) | chevron (center) | status (right) */}
         <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
           <button
             onClick={handleReset}
@@ -479,7 +482,6 @@ export default function BotBuilder() {
         )}
       </div>
 
-      {/* Mobile permanent bottom dock: Run + progress bar */}
       <div className="md:hidden fixed left-0 right-0 bottom-0 bg-[#0b1c3f] text-white border-t border-white/10 z-40">
         <div className="flex items-center gap-2 px-3 py-2">
           <button
@@ -511,7 +513,7 @@ export default function BotBuilder() {
         {renderSidebar()}
       </aside>
 
-      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden pb-[128px] md:pb-0">
+      <main className="flex-1 flex flex-col bg-gray-100 overflow-hidden pb-[128px] md:pb-0 relative">
         <div className="h-12 bg-white border-b border-gray-200 flex items-center gap-1 px-3 text-gray-500 flex-shrink-0">
           <button className="md:hidden w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Blocks menu" onClick={() => setMobileMenuOpen(true)}>☰</button>
           <button className="w-8 h-8 rounded hover:bg-gray-100 flex items-center justify-center text-sm" title="Reset blocks" onClick={() => setBlocks([createBlock('trade_params'), createBlock('purchase'), createBlock('sell'), createBlock('restart')])}>↻</button>
@@ -531,6 +533,12 @@ export default function BotBuilder() {
           {blocks.map((b, i) => (
             <BlockRenderer key={b.id} block={b} index={i + 1} onToggle={() => toggleBlock(b.id)} onDelete={() => removeBlock(b.id)} onUpdate={(patch) => updateBlock(b.id, patch)} />
           ))}
+
+          {!mobileReportOpen && (
+            <button className="absolute bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center z-10">
+              AI
+            </button>
+          )}
         </div>
       </main>
 
@@ -551,7 +559,6 @@ export default function BotBuilder() {
         </>
       )}
 
-      {/* Risk Disclaimer modal */}
       {showRiskDisclaimer && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowRiskDisclaimer(false)}>
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -572,7 +579,6 @@ export default function BotBuilder() {
         </div>
       )}
 
-      {/* What's this modal */}
       {showWhatsThis && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowWhatsThis(false)}>
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -627,7 +633,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto relative">
+      <div className="flex-1 overflow-y-auto">
         {detailTab === 'summary' && (
           <div className="p-4">
             {!show ? (
@@ -709,14 +715,8 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
             )}
           </div>
         )}
-
-        {/* Floating AI button at bottom-right */}
-        <button className="absolute bottom-4 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-10">
-          AI
-        </button>
       </div>
 
-      {/* Stats footer with Risk Disclaimer + What's this */}
       <div className="border-t border-gray-200 pt-3 pb-2 px-4 bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1" />
@@ -868,19 +868,35 @@ function Stat({ label, value, highlight = 'none' }: { label: string; value: stri
   const color = highlight === 'green' ? 'text-green-600' : highlight === 'red' ? 'text-red-600' : 'text-navy';
   return (<div><div className="text-gray-500 font-medium text-[10px]">{label}</div><div className={`font-semibold mt-1 ${color}`}>{value}</div></div>);
 }
+
 function SectionHeader({ label }: { label: string }) {
   return (<div className="bg-[#0b3d91] text-white text-xs font-semibold px-3 py-1.5 rounded-sm -mx-3 md:-mx-4 mt-3 mb-2 w-[calc(100%+1.5rem)] md:w-[calc(100%+2rem)]">{label}</div>);
 }
+
 function CheckboxRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
   return (<div className="flex items-center justify-between gap-2 py-1"><span className="text-gray-500 text-[10px] md:text-xs">{label}</span><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="w-4 h-4 accent-blue-600 cursor-pointer" /></div>);
 }
+
 type OptionGroup = { group: string; options: string[] };
+
 function SelectField({ label, value, onChange, options, groups }: { label: string; value: string; onChange: (v: string) => void; options?: string[]; groups?: OptionGroup[] }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="text-gray-500 w-36 md:w-44 shrink-0">{label}:</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="bg-gray-100 hover:bg-gray-200 transition px-2 py-1 rounded text-gray-700 outline-none cursor-pointer max-w-full">
-        {groups ? groups.map((g) => (<optgroup key={g.group} label={g.group}>{g.options.map((o) => (<option key={o} value={o}>{o}</option>))}</optgroup>)) : options?.map((o) => (<option key={o} value={o}>{o}</option>))}
+        {groups ? (
+          groups.map((g) => (
+            <optgroup key={g.group} label={g.group}>
+              {g.options.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </optgroup>
+          ))
+        ) : (
+          options?.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))
+        )}
       </select>
     </div>
   );
