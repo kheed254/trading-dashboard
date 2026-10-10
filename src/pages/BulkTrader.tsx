@@ -27,6 +27,7 @@ const TRADE_TYPES = [
   'Rise/Fall',
 ];
 
+/* ---------- Component ---------- */
 export default function BulkTrader() {
   const [marketName, setMarketName] = useState('Volatility 100 Index');
   const [tradeType, setTradeType] = useState('Even/Odd');
@@ -50,7 +51,13 @@ export default function BulkTrader() {
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
 
-  // FIX: Added looping logic for multiple trades
+  // Get the last 8 tick parities for the E/O sequence display
+  const recentParity = useMemo(() => {
+    // We need the last 8 digits. digits is likely an array of numbers.
+    const recent = digits.slice(-8);
+    return recent.map((d) => (d % 2 === 0 ? 'E' : 'O'));
+  }, [digits]);
+
   const handleTrade = async (direction: 'EVEN' | 'ODD') => {
     if (!authorized) {
       alert('Please log in to place trades.');
@@ -59,15 +66,11 @@ export default function BulkTrader() {
 
     setIsTrading(true);
     
-    // Map the UI selection to the Deriv API contract type
     const contractType = direction === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
-    
-    // Enforce minimum duration
     const duration = Math.max(1, ticks);
     const durationUnit = 't';
 
     try {
-      // Loop based on the "No of Trades" input
       for (let i = 0; i < numTrades; i++) {
         console.log(`[Bulk Trader] Placing trade ${i + 1} of ${numTrades}`);
         
@@ -93,57 +96,55 @@ export default function BulkTrader() {
   };
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-6">
-      {/* MARKET */}
-      <Label>Market</Label>
-      <select
-        value={marketName}
-        onChange={(e) => setMarketName(e.target.value)}
-        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-gray-50 mb-6 outline-none focus:border-blue-400"
-      >
-        {MARKETS.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-
-      {/* TRADE TYPE */}
-      <Label>Trade Type</Label>
-      <select
-        value={tradeType}
-        onChange={(e) => setTradeType(e.target.value)}
-        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-gray-50 mb-6 outline-none focus:border-blue-400"
-      >
-        {TRADE_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {t}
-          </option>
-        ))}
-      </select>
+    <main className="max-w-7xl mx-auto px-3 py-4">
+      {/* MARKET & TRADE TYPE - Side by side on mobile */}
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <Label>Market</Label>
+          <select
+            value={marketName}
+            onChange={(e) => setMarketName(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-2 py-2 text-xs bg-white outline-none focus:border-blue-400"
+          >
+            {MARKETS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Trade Type</Label>
+          <select
+            value={tradeType}
+            onChange={(e) => setTradeType(e.target.value)}
+            className="w-full border border-gray-300 rounded-md px-2 py-2 text-xs bg-white outline-none focus:border-blue-400"
+          >
+            {TRADE_TYPES.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {/* NUMBER OF TICKS */}
-      <Label>Number of Ticks</Label>
-      <input
-        type="number"
-        min={50}
-        max={5000}
-        value={numTicks}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          setNumTicks(v > 0 ? v : 50);
-        }}
-        className="w-full border border-gray-300 rounded-md px-3 py-2.5 text-sm bg-gray-50 mb-8 outline-none focus:border-blue-400 text-center font-semibold"
-      />
+      <div className="mb-6">
+        <Label>Number of Ticks</Label>
+        <input
+          type="number"
+          min={50}
+          max={5000}
+          value={numTicks}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setNumTicks(v > 0 ? v : 50);
+          }}
+          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white outline-none focus:border-blue-400 text-center font-semibold"
+        />
+      </div>
 
       {/* CURRENT TICK */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <Label center>Current Tick</Label>
-        <div
-          className={`text-3xl font-bold font-mono transition-colors ${
-            connected ? 'text-blue-500' : 'text-gray-400'
-          }`}
-        >
+        <div className={`text-3xl font-bold font-mono ${connected ? 'text-blue-600' : 'text-gray-400'}`}>
           {price !== null ? price.toFixed(2) : 'Loading…'}
         </div>
         {currentDigit !== null && (
@@ -153,46 +154,63 @@ export default function BulkTrader() {
         )}
       </div>
 
-      {/* DIGIT CIRCLES 0-9 */}
-      <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 mb-8">
-        <div className="flex justify-between gap-2 min-w-[640px]">
-          {digitStats.map((d) => {
-            const isCurrent = d.digit === currentDigit;
-            const cls = isCurrent
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-100 border border-gray-200 text-navy';
-            return (
-              <div
-                key={d.digit}
-                className="flex-1 flex flex-col items-center"
-              >
-                <div
-                  className={`w-14 h-14 rounded-full flex items-center justify-center font-semibold transition-colors ${cls}`}
-                >
+      {/* DIGIT CIRCLES 0-9 - Circular gauges style */}
+      <div className="flex justify-between gap-1 mb-6">
+        {digitStats.map((d) => {
+          const isCurrent = d.digit === currentDigit;
+          const strokeDasharray = 2 * Math.PI * 20; // Circumference for r=20
+          const strokeDashoffset = strokeDasharray - (d.pct / 100) * strokeDasharray;
+          
+          return (
+            <div key={d.digit} className="flex flex-col items-center flex-1">
+              <div className="relative w-10 h-10">
+                <svg viewBox="0 0 48 48" className="w-full h-full -rotate-90">
+                  {/* Background circle */}
+                  <circle cx="24" cy="24" r="20" fill="none" stroke="#e5e7eb" strokeWidth="6" />
+                  {/* Foreground progress circle */}
+                  <circle 
+                    cx="24" cy="24" r="20" 
+                    fill="none" 
+                    stroke={isCurrent ? '#3b82f6' : '#14b8a6'} 
+                    strokeWidth="6" 
+                    strokeDasharray={strokeDasharray}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className={`absolute inset-0 flex items-center justify-center text-[11px] font-bold ${isCurrent ? 'text-blue-600' : 'text-navy'}`}>
                   {d.digit}
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {d.pct.toFixed(1)}%
-                </div>
               </div>
-            );
-          })}
-        </div>
+              <div className="text-[9px] text-gray-500 mt-1">{d.pct.toFixed(1)}%</div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="text-right text-xs text-gray-400 mb-6">
-        {digits.length}/{numTicks}
+      {/* E/O SEQUENCE ROW */}
+      <div className="flex justify-center gap-1 mb-6">
+        {recentParity.map((p, i) => (
+          <span 
+            key={i} 
+            className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-bold text-white ${
+              p === 'E' ? 'bg-teal-500' : 'bg-red-500'
+            }`}
+          >
+            {p}
+          </span>
+        ))}
       </div>
 
-      {/* TICKS / STAKE / NO OF TRADES */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+      {/* TICKS / STAKE / NO OF TRADES - Compact row */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
         <div>
           <Label center>Ticks</Label>
           <input
             type="number"
             value={ticks}
             onChange={(e) => setTicks(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 outline-none focus:border-blue-400 text-center"
+            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
           />
         </div>
         <div>
@@ -202,7 +220,7 @@ export default function BulkTrader() {
             step="0.01"
             value={stake}
             onChange={(e) => setStake(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 outline-none focus:border-blue-400 text-center"
+            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
           />
         </div>
         <div>
@@ -211,72 +229,51 @@ export default function BulkTrader() {
             type="number"
             value={numTrades}
             onChange={(e) => setNumTrades(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-gray-50 outline-none focus:border-blue-400 text-center"
+            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
           />
         </div>
       </div>
 
-      {/* EVEN / ODD BARS — Now clickable buttons! */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+      {/* EVEN / ODD BARS - Slightly larger blocks */}
+      <div className="grid grid-cols-2 gap-2 mb-4">
         <button 
           onClick={() => handleTrade('EVEN')}
           disabled={isTrading || !authorized}
-          className={`bg-teal-500 hover:bg-teal-600 text-white rounded-md px-4 py-3 transition ${
-            isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-          }`}
+          className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         >
-          <div className="font-semibold text-center">
-            {isTrading ? 'Placing...' : 'Even'}
-          </div>
-          <div className="text-center text-sm mt-1">
-            {evenOdd.even} ({evenOdd.evenPct.toFixed(2)}%)
-          </div>
+          <div className="bg-teal-500 text-white py-2 font-semibold text-center">Even</div>
+          <div className="bg-teal-400 text-white py-1 text-center text-sm">{evenOdd.evenPct.toFixed(2)}%</div>
         </button>
         
         <button 
           onClick={() => handleTrade('ODD')}
           disabled={isTrading || !authorized}
-          className={`bg-red-500 hover:bg-red-600 text-white rounded-md px-4 py-3 transition ${
-            isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-          }`}
+          className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         >
-          <div className="font-semibold text-center">
-            {isTrading ? 'Placing...' : 'Odd'}
-          </div>
-          <div className="text-center text-sm mt-1">
-            {evenOdd.odd} ({evenOdd.oddPct.toFixed(2)}%)
-          </div>
+          <div className="bg-red-500 text-white py-2 font-semibold text-center">Odd</div>
+          <div className="bg-red-400 text-white py-1 text-center text-sm">{evenOdd.oddPct.toFixed(2)}%</div>
         </button>
       </div>
 
       {/* STATUS */}
-      <div className="text-center text-xs text-gray-400 mb-16">
+      <div className="text-center text-xs text-gray-400 mb-8">
         {connected
           ? `Streaming live ticks · ${digits.length} collected`
           : 'Connecting to tick stream…'}
       </div>
 
       {/* AI BUTTON */}
-      <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center">
+      <button className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-10">
         AI
       </button>
     </main>
   );
 }
 
-function Label({
-  children,
-  center,
-}: {
-  children: React.ReactNode;
-  center?: boolean;
-}) {
+/* ---------- Helpers ---------- */
+function Label({ children, center }: { children: React.ReactNode; center?: boolean }) {
   return (
-    <div
-      className={`text-[11px] uppercase tracking-wider text-gray-500 font-medium mb-1 ${
-        center ? 'text-center' : ''
-      }`}
-    >
+    <div className={`text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 ${center ? 'text-center' : ''}`}>
       {children}
     </div>
   );
