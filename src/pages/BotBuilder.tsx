@@ -74,6 +74,8 @@ const SYMBOL_MAP: Record<string, string> = {
 };
 
 type BlockType = 'trade_params' | 'purchase' | 'sell' | 'restart';
+type DirectionType = 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs' | 'Higher' | 'Lower' | 'Touch' | 'No Touch';
+
 type Block = {
   id: string;
   type: BlockType;
@@ -89,7 +91,7 @@ type Block = {
   durationType?: string;
   durationValue?: number;
   stakeType?: string;
-  direction?: string;
+  direction?: DirectionType;
 };
 
 const BLOCK_LABELS: Record<BlockType, string> = {
@@ -190,8 +192,6 @@ export default function BotBuilder() {
   const firstRun = useRef(true);
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // FIX: Collapsible mobile report panel (like derivalyser.com)
   const [mobileReportOpen, setMobileReportOpen] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
@@ -211,7 +211,7 @@ export default function BotBuilder() {
 
   useEffect(() => {
     if (firstRun.current) { firstRun.current = false; return; }
-    saveBot(blocks);
+    saveBot(blocks as any);
     setLastSavedAt(Date.now());
     setSavedFlash(true);
     const t = setTimeout(() => setSavedFlash(false), 800);
@@ -308,8 +308,17 @@ export default function BotBuilder() {
   const removeBlock = (id: string) => setBlocks((bs) => bs.filter((b) => b.id !== id));
   const toggleBlock = (id: string) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, open: !b.open } : b)));
   const updateBlock = (id: string, patch: Partial<Block>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-  const handleSave = () => { saveBot(blocks); setLastSavedAt(Date.now()); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 800); };
+  const handleSave = () => { saveBot(blocks as any); setLastSavedAt(Date.now()); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 800); };
   const handleLoad = () => { const saved = loadBot(); if (!saved || saved.blocks.length === 0) { alert('No saved bot found.'); return; } setBlocks(saved.blocks as Block[]); setLastSavedAt(saved.savedAt); };
+
+  // FIX: Use handleReset in the collapsed mobile bar
+  const handleReset = () => {
+    setBotStats({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
+    setBotJournal([]);
+    setActiveContractId(null);
+    consecutiveLossesRef.current = 0;
+    setCurrentStake(null);
+  };
 
   const applyPreset = (presetId: string) => {
     const trade = createBlock('trade_params');
@@ -320,14 +329,6 @@ export default function BotBuilder() {
     if (presetId === 'over_under') trade.tradeType = 'Digits › Over/Under';
     if (presetId === 'matches_differs') trade.tradeType = 'Digits › Matches/Differs';
     setBlocks([trade, purchase, sell, restart]);
-  };
-
-  const handleReset = () => {
-    setBotStats({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
-    setBotJournal([]);
-    setActiveContractId(null);
-    consecutiveLossesRef.current = 0;
-    setCurrentStake(null);
   };
 
   const placeOneTrade = () => {
@@ -424,7 +425,6 @@ export default function BotBuilder() {
     <div className="flex h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] overflow-hidden md:overflow-visible relative">
 
       {/* ============ MOBILE: Collapsible Bottom Sheet Report ============ */}
-      {/* Backdrop when expanded */}
       {mobileReportOpen && (
         <div
           className="md:hidden fixed inset-0 bg-black/30 z-20"
@@ -432,16 +432,14 @@ export default function BotBuilder() {
         />
       )}
 
-      {/* The bottom sheet itself */}
       <div
         className={`md:hidden fixed left-0 right-0 bottom-0 bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
           mobileReportOpen ? 'h-[70vh]' : 'h-[56px]'
         }`}
       >
-        {/* Collapse/Expand header bar */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
+        <div className="relative flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
           <button
-            onClick={() => setMobileReportOpen(false)}
+            onClick={handleReset}
             className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
           >
             Reset
@@ -468,7 +466,6 @@ export default function BotBuilder() {
           </div>
         </div>
 
-        {/* Report content — only visible when expanded */}
         {mobileReportOpen && (
           <div className="flex-1 flex flex-col overflow-hidden">
             <ReportBody {...reportProps} />
@@ -732,7 +729,7 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
           {block.type === 'purchase' && (
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Purchase</span>
-              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
+              <select value={block.direction ?? 'Rise'} onChange={(e) => onUpdate({ direction: e.target.value as DirectionType })} className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded text-gray-700 outline-none cursor-pointer">
                 {(() => {
                   const tp = block.tradeType || '';
                   if (tp.includes('Even')) return (<><option value="Even">Even</option><option value="Odd">Odd</option></>);
