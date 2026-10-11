@@ -182,6 +182,30 @@ function resolveDuration(durationType: string, durationValue: number) {
 
 export default function BotBuilder() {
   const [blocks, setBlocks] = useState<Block[]>(() => {
+    // Check URL params from Entry Scanner first
+    const params = new URLSearchParams(window.location.search);
+    const marketParam = params.get('market');
+    const tradeTypeParam = params.get('tradeType');
+    const digitParam = params.get('digit');
+
+    if (marketParam && tradeTypeParam) {
+      console.log('[BotBuilder] Loading preset from URL:', { marketParam, tradeTypeParam, digitParam });
+
+      const tp = createBlock('trade_params');
+      tp.market = marketParam;
+      tp.tradeType = tradeTypeParam;
+      tp.contractType = 'Over';
+      tp.digitBarrier = digitParam ? Number(digitParam) : 5;
+
+      const purchase = createBlock('purchase');
+      purchase.direction = 'Over';
+
+      // Clear the URL params after reading them (so refresh doesn't reapply)
+      window.history.replaceState({}, '', '/bot_builder');
+
+      return [tp, purchase, createBlock('sell'), createBlock('restart')];
+    }
+
     const saved = loadBot();
     if (saved && saved.blocks.length > 0) return saved.blocks as Block[];
     return [createBlock('trade_params'), createBlock('purchase'), createBlock('sell'), createBlock('restart')];
@@ -688,7 +712,6 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         )}
       </div>
 
-      {/* Stats footer — Risk Disclaimer removed */}
       <div className="border-t border-gray-200 pt-3 pb-2 px-4 bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1" />
