@@ -1,193 +1,243 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useAuthWs } from '../lib/auth-ws-context';
 
-type Client = {
+type Copier = {
   id: string;
   token: string;
-  account: 'Real' | 'Demo';
-  added: string;
+  status: 'connected' | 'disconnected' | 'connecting' | 'error';
+  loginId?: string;
+  addedAt: number;
+  enabled: boolean;
+  lastErrorMsg?: string;
 };
 
-export default function CopyTrading() {
-  const [token, setToken] = useState('');
-  const [account, setAccount] = useState<'Real' | 'Demo'>('Real');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [rotLinked, setRotLinked] = useState(false);
-  const [copying, setCopying] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+const STORAGE_KEY = 'copy_trading_copiers';
 
-  const addClient = () => {
-    if (!token.trim()) {
-      alert('Paste a Deriv v2 API token first.');
+export default function CopyTrading() {
+  const { authorized } = useAuthWs();
+  const [token, setToken] = useState('');
+  const [accountType, setAccountType] = useState<'real' | 'demo'>('real');
+  const [copiers, setCopiers] = useState<Copier[]>([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isCopyTradingActive, setIsCopyTradingActive] = useState(false);
+
+  /* ---- Load from localStorage on mount ---- */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) setCopiers(JSON.parse(raw));
+      const active = localStorage.getItem('iscopyTrading');
+      if (active === 'true') setIsCopyTradingActive(true);
+    } catch {}
+  }, []);
+
+  /* ---- Persist to localStorage ---- */
+  const saveCopiers = (next: Copier[]) => {
+    setCopiers(next);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch {}
+  };
+
+  const handleAdd = () => {
+    const trimmed = token.trim();
+    if (!trimmed) {
+      alert('Please paste a Deriv v2 API token.');
       return;
     }
-    const c: Client = {
-      id: `c-${Date.now()}`,
-      token: token.slice(0, 8) + '…' + token.slice(-4),
-      account,
-      added: new Date().toLocaleTimeString(),
-    };
-    setClients((prev) => [...prev, c]);
-    setToken('');
+    if (copiers.some((c) => c.token === trimmed)) {
+      alert('This token has already been added.');
+      return;
+    }
+
+    setIsAdding(true);
+
+    // Phase 1 — just store the token; no validation yet
+    const next: Copier[] = [
+      ...copiers,
+      {
+        id: `${Date.now()}`,
+        token: trimmed,
+        status: 'disconnected',
+        addedAt: Date.now(),
+        enabled: true,
+      },
+    ];
+
+    setTimeout(() => {
+      saveCopiers(next);
+      setToken('');
+      setIsAdding(false);
+      alert(`Follower account added (${accountType}).\n\nValidation will be wired up in the next update.`);
+    }, 500);
   };
 
-  const syncClients = () => {
-    setSyncing(true);
-    setTimeout(() => setSyncing(false), 800);
+  const handleRemove = (id: string) => {
+    if (!confirm('Remove this follower account?')) return;
+    saveCopiers(copiers.filter((c) => c.id !== id));
   };
 
-  const startDemoToReal = () => {
-    setRotLinked(true);
-    alert(
-      'Demo → Real copy trading activated.\nNote: this is a UI preview — real linking requires a live account.'
+  const handleToggleEnabled = (id: string) => {
+    saveCopiers(
+      copiers.map((c) => (c.id === id ? { ...c, enabled: !c.enabled } : c))
     );
   };
 
-  const toggleCopy = () => {
-    if (clients.length === 0) {
-      alert('Add at least one client first.');
-      return;
+  const handleSync = async () => {
+    setIsSyncing(true);
+    await new Promise((r) => setTimeout(r, 800));
+    setIsSyncing(false);
+    alert(`Synced ${copiers.length} follower(s).\n\nReal sync will be wired up in the next update.`);
+  };
+
+  const handleStartStop = () => {
+    const next = !isCopyTradingActive;
+    setIsCopyTradingActive(next);
+    try {
+      localStorage.setItem('iscopyTrading', next ? 'true' : 'false');
+    } catch {}
+  };
+
+  const statusColor = (s: Copier['status']) => {
+    switch (s) {
+      case 'connected': return 'bg-green-500';
+      case 'connecting': return 'bg-yellow-500';
+      case 'error': return 'bg-red-500';
+      default: return 'bg-gray-400';
     }
-    setCopying((c) => !c);
   };
 
   return (
-    <main className="bg-[#0a1a3c] min-h-[calc(100vh-56px)] text-white">
-      <div className="max-w-7xl mx-auto p-3 sm:p-4 space-y-4">
-        {/* Top bar — wrap on mobile */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <button
-            onClick={startDemoToReal}
-            className="bg-green-500 hover:bg-green-600 text-white text-xs sm:text-sm font-semibold px-3 sm:px-4 py-2 rounded-md transition"
-          >
-            Start Demo to Real Copy Trading
-          </button>
-          <button className="bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold px-3 py-2 rounded-md flex items-center gap-1 transition">
-            <span className="w-3 h-3 rounded-sm bg-white/30" />
-            Tutorial
-          </button>
-        </div>
-
-        {/* ROT box */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <span className="text-xs sm:text-sm text-gray-300">
-            ROT — {rotLinked ? 'linked' : 'not linked yet'}
-          </span>
-          <div className="flex gap-1">
-            {[0, 1, 2, 3, 4].map((i) => (
-              <span
-                key={i}
-                className={`w-1.5 h-1.5 rounded-full ${
-                  rotLinked ? 'bg-green-400' : 'bg-green-500/40'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Add follower panel */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg p-3 sm:p-4 space-y-3">
-          {/* Input row — stacks on mobile */}
-          <div className="flex flex-col md:flex-row gap-2">
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Enter follower's Deriv v2 API token (PAT, trade scope)"
-              className="flex-1 bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-xs sm:text-sm text-white placeholder:text-gray-500 outline-none focus:border-blue-400 min-w-0"
-            />
-            <div className="flex gap-2">
-              <select
-                value={account}
-                onChange={(e) =>
-                  setAccount(e.target.value as 'Real' | 'Demo')
-                }
-                className="flex-1 md:flex-none bg-[#0a1a3c] border border-white/10 rounded-md px-3 py-2.5 text-sm text-white outline-none cursor-pointer"
-              >
-                <option value="Real">Real</option>
-                <option value="Demo">Demo</option>
-              </select>
-              <button
-                onClick={addClient}
-                className="flex-1 md:flex-none bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold px-4 sm:px-5 py-2.5 rounded-md transition"
-              >
-                Add
-              </button>
-              <button
-                onClick={syncClients}
-                className="flex-1 md:flex-none bg-[#0a1a3c] border border-white/10 hover:border-white/30 text-white text-sm font-semibold px-4 py-2.5 rounded-md flex items-center justify-center gap-2 transition"
-              >
-                Sync
-                <span
-                  className={`inline-block ${syncing ? 'animate-spin' : ''}`}
-                >
-                  ↻
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Start Copy Trading row */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={toggleCopy}
-              className={`${
-                copying
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-green-500 hover:bg-green-600'
-              } text-white text-sm font-semibold px-4 py-2 rounded-md transition`}
+    <main className="min-h-screen bg-[#0a1a35] pb-32">
+      <div className="max-w-3xl mx-auto px-4 py-4">
+        {/* ============ ADD FOLLOWER ROW ============ */}
+        <div className="bg-[#0f2447] border border-white/10 rounded-xl p-3 mb-4">
+          <input
+            type="text"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="Enter follower's Deriv v2 API token (PAT, trade scope)"
+            className="w-full bg-[#0a1a35] border border-white/10 rounded-md px-3 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-blue-500 mb-3"
+          />
+          <div className="flex items-center gap-2">
+            <select
+              value={accountType}
+              onChange={(e) => setAccountType(e.target.value as 'real' | 'demo')}
+              className="bg-[#0a1a35] border border-white/10 rounded-md px-3 py-2 text-sm text-white outline-none cursor-pointer"
             >
-              {copying ? 'Stop Copy Trading' : 'Start Copy Trading'}
+              <option value="real">Real</option>
+              <option value="demo">Demo</option>
+            </select>
+
+            <button
+              onClick={handleAdd}
+              disabled={isAdding}
+              className={`flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-md transition ${
+                isAdding ? 'opacity-60' : ''
+              }`}
+            >
+              {isAdding ? 'Adding…' : 'Add'}
             </button>
-            <button className="bg-blue-500 hover:bg-blue-600 text-white text-sm w-9 h-9 rounded-md flex items-center justify-center transition">
-              ▣
+
+            <button
+              onClick={handleSync}
+              disabled={isSyncing || copiers.length === 0}
+              className={`px-4 py-2.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-semibold transition flex items-center gap-1.5 ${
+                isSyncing || copiers.length === 0 ? 'opacity-40 cursor-not-allowed' : ''
+              }`}
+            >
+              Sync
+              <span className={isSyncing ? 'animate-spin' : ''}>↻</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 mt-3">
+            <button
+              onClick={handleStartStop}
+              className={`flex-1 font-semibold py-2.5 rounded-md transition text-white ${
+                isCopyTradingActive
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : 'bg-green-600 hover:bg-green-700'
+              }`}
+            >
+              {isCopyTradingActive ? 'Stop Copy Trading' : 'Start Copy Trading'}
+            </button>
+            <button
+              onClick={() => alert('Advanced settings coming soon')}
+              className="w-10 h-10 rounded-md bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center"
+              title="Settings"
+            >
+              ⚙
             </button>
           </div>
         </div>
 
-        {/* Clients count */}
-        <div className="bg-[#132a52] border border-white/10 rounded-lg px-4 py-3 text-xs sm:text-sm">
-          Total Clients added:{' '}
-          <span className="font-semibold">{clients.length}</span>
+        {/* ============ COPILOT COUNT ============ */}
+        <div className="bg-[#0f2447] border border-white/10 rounded-xl px-4 py-3 mb-4">
+          <div className="text-white text-sm font-medium">
+            Total Clients added: <span className="font-bold">{copiers.length}</span>
+          </div>
         </div>
 
-        {/* Client cards — stack on mobile */}
-        {clients.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {clients.map((c) => (
+        {/* ============ COPIER LIST ============ */}
+        {copiers.length > 0 && (
+          <div className="space-y-2">
+            {copiers.map((c) => (
               <div
                 key={c.id}
-                className="bg-[#132a52] border border-white/10 rounded-lg p-4 flex items-center justify-between gap-3"
+                className="bg-[#0f2447] border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3"
               >
-                <div className="min-w-0">
-                  <div className="font-mono text-sm text-white truncate">
-                    {c.token}
+                <span className={`w-2.5 h-2.5 rounded-full ${statusColor(c.status)}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-mono truncate">
+                    {c.loginId || c.token.slice(0, 12) + '…'}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {c.account} · added {c.added}
+                  <div className="text-[10px] text-gray-400">
+                    {c.status} · Added {new Date(c.addedAt).toLocaleDateString()}
                   </div>
                 </div>
+
                 <button
-                  onClick={() =>
-                    setClients((prev) =>
-                      prev.filter((x) => x.id !== c.id)
-                    )
-                  }
-                  className="text-red-400 hover:text-red-300 text-xs shrink-0"
+                  onClick={() => handleToggleEnabled(c.id)}
+                  className={`text-xs px-3 py-1 rounded font-medium transition ${
+                    c.enabled
+                      ? 'bg-green-500/20 text-green-400 border border-green-500/40'
+                      : 'bg-gray-500/20 text-gray-400 border border-gray-500/40'
+                  }`}
                 >
-                  Remove
+                  {c.enabled ? 'Enabled' : 'Disabled'}
+                </button>
+
+                <button
+                  onClick={() => handleRemove(c.id)}
+                  className="text-red-400 hover:text-red-300 text-lg leading-none px-2"
+                  title="Remove"
+                >
+                  ×
                 </button>
               </div>
             ))}
           </div>
         )}
 
-        {/* Empty space holder */}
-        <div className="h-40" />
+        {/* ============ EMPTY STATE ============ */}
+        {copiers.length === 0 && (
+          <div className="text-center text-gray-500 text-sm py-12">
+            <div className="text-4xl mb-3">👥</div>
+            <div>No followers added yet.</div>
+            <div className="text-xs mt-1">Paste a Deriv v2 API token above to get started.</div>
+          </div>
+        )}
 
-        {/* AI floating button */}
-        <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center z-10">
-          AI
-        </button>
+        {/* ============ NOT LOGGED IN WARNING ============ */}
+        {!authorized && (
+          <div className="mt-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl px-4 py-3">
+            <div className="text-yellow-400 text-xs font-medium">
+              ⚠ Log in to your Deriv account before starting copy trading.
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
