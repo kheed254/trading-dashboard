@@ -37,7 +37,6 @@ export default function BulkTrader() {
   const [numTrades, setNumTrades] = useState(1);
   const [isTrading, setIsTrading] = useState(false);
 
-  // Imported useAuthWs to actually place the trades
   const { authorized, placeTrade } = useAuthWs();
 
   /* ---- Live stream ---- */
@@ -64,7 +63,7 @@ export default function BulkTrader() {
     }
 
     setIsTrading(true);
-    
+
     const contractType = direction === 'EVEN' ? 'DIGITEVEN' : 'DIGITODD';
     const duration = Math.max(1, ticks);
     const durationUnit = 't';
@@ -72,7 +71,7 @@ export default function BulkTrader() {
     try {
       for (let i = 0; i < numTrades; i++) {
         console.log(`[Bulk Trader] Placing trade ${i + 1} of ${numTrades}`);
-        
+
         await placeTrade({
           symbol,
           contractType,
@@ -159,7 +158,7 @@ export default function BulkTrader() {
           const isCurrent = d.digit === currentDigit;
           const strokeDasharray = 2 * Math.PI * 20; // Circumference for r=20
           const strokeDashoffset = strokeDasharray - (d.pct / 100) * strokeDasharray;
-          
+
           return (
             <div key={d.digit} className="flex flex-col items-center flex-1">
               <div className="relative w-9 h-9">
@@ -167,11 +166,11 @@ export default function BulkTrader() {
                   {/* Background circle */}
                   <circle cx="24" cy="24" r="20" fill="none" stroke="#e5e7eb" strokeWidth="6" />
                   {/* Foreground progress circle */}
-                  <circle 
-                    cx="24" cy="24" r="20" 
-                    fill="none" 
-                    stroke={isCurrent ? '#3b82f6' : '#14b8a6'} 
-                    strokeWidth="6" 
+                  <circle
+                    cx="24" cy="24" r="20"
+                    fill="none"
+                    stroke={isCurrent ? '#3b82f6' : '#14b8a6'}
+                    strokeWidth="6"
                     strokeDasharray={strokeDasharray}
                     strokeDashoffset={strokeDashoffset}
                     strokeLinecap="round"
@@ -190,8 +189,8 @@ export default function BulkTrader() {
       {/* E/O SEQUENCE ROW */}
       <div className="flex justify-center gap-1 mb-6">
         {recentParity.map((p, i) => (
-          <span 
-            key={i} 
+          <span
+            key={i}
             className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-bold text-white ${
               p === 'E' ? 'bg-teal-500' : 'bg-red-500'
             }`}
@@ -235,7 +234,7 @@ export default function BulkTrader() {
 
       {/* EVEN / ODD BARS */}
       <div className="grid grid-cols-2 gap-2 mb-4">
-        <button 
+        <button
           onClick={() => handleTrade('EVEN')}
           disabled={isTrading || !authorized}
           className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
@@ -243,8 +242,8 @@ export default function BulkTrader() {
           <div className="bg-teal-500 text-white py-2 font-semibold text-center">Even</div>
           <div className="bg-teal-400 text-white py-1 text-center text-sm">{evenOdd.evenPct.toFixed(2)}%</div>
         </button>
-        
-        <button 
+
+        <button
           onClick={() => handleTrade('ODD')}
           disabled={isTrading || !authorized}
           className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
@@ -260,11 +259,6 @@ export default function BulkTrader() {
           ? `Streaming live ticks · ${digits.length} collected`
           : 'Connecting to tick stream…'}
       </div>
-
-      {/* AI BUTTON */}
-      <button className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-10">
-        AI
-      </button>
     </main>
   );
 }
