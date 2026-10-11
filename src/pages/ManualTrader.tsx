@@ -7,9 +7,14 @@ import { useAuthWs } from '../lib/auth-ws-context';
 const MARKET_MAP: Record<string, string> = {
   'Volatility 10 (1s) Index': '1HZ10V',
   'Volatility 25 (1s) Index': '1HZ25V',
+  'Volatility 30 (1s) Index': '1HZ30V',
   'Volatility 50 (1s) Index': '1HZ50V',
   'Volatility 75 (1s) Index': '1HZ75V',
   'Volatility 100 (1s) Index': '1HZ100V',
+  'Volatility 10 Index': 'R_10',
+  'Volatility 25 Index': 'R_25',
+  'Volatility 50 Index': 'R_50',
+  'Volatility 75 Index': 'R_75',
   'Volatility 100 Index': 'R_100',
 };
 
@@ -56,7 +61,7 @@ export default function ManualTrader() {
   // Auto-Trade
   const [autoTrade, setAutoTrade] = useState(false);
   const [autoDirection, setAutoDirection] = useState<'primary' | 'secondary'>('primary');
-  const [autoDelay, setAutoDelay] = useState(3); // seconds between trades
+  const [autoDelay, setAutoDelay] = useState(3);
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Live payouts
@@ -133,7 +138,6 @@ export default function ManualTrader() {
       if (t.is_sold && !trackedContractIds.current.has(t.contract_id)) {
         trackedContractIds.current.add(t.contract_id);
 
-        // Update session P/L
         setSessionPL((prev) => {
           const newPL = +(prev + t.profit).toFixed(2);
           addJournal(
@@ -141,14 +145,12 @@ export default function ManualTrader() {
             t.profit > 0 ? 'profit' : 'loss'
           );
 
-          // Take Profit check
           if (takeProfitEnabled && newPL >= takeProfitTarget && !targetReached) {
             setTargetReached('tp');
             setAutoTrade(false);
             addJournal(`🎯 Take Profit hit (+$${newPL.toFixed(2)}) — stopped`, 'profit');
           }
 
-          // Stop Loss check
           if (stopLossEnabled && newPL <= -stopLossTarget && !targetReached) {
             setTargetReached('sl');
             setAutoTrade(false);
@@ -162,7 +164,7 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTrades, takeProfitEnabled, takeProfitTarget, stopLossEnabled, stopLossTarget, targetReached]);
 
-  /* ---- Reset session when both toggles off ---- */
+  /* ---- Reset session ---- */
   const resetSession = () => {
     setSessionPL(0);
     setTargetReached(null);
@@ -239,14 +241,6 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoTrade, autoDirection, autoDelay, targetReached, authorized]);
 
-  /* ---- Auto-Trade OFF notification ---- */
-  useEffect(() => {
-    if (!autoTrade && journal.length > 0 && journal[0].text.startsWith('Auto-Trade ON')) {
-      addJournal('Auto-Trade OFF', 'info');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoTrade]);
-
   /* ---- Button labels ---- */
   const primaryLabel =
     tradeType === 'evenodd' ? 'Even' :
@@ -288,7 +282,6 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          {/* Session P/L badge */}
           <div className={`px-3 py-1.5 rounded-lg border ${
             sessionPL > 0 ? 'bg-green-500/10 border-green-500/30' :
             sessionPL < 0 ? 'bg-red-500/10 border-red-500/30' :
@@ -406,7 +399,6 @@ export default function ManualTrader() {
         {/* TP/SL Row */}
         <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
           <div className="grid grid-cols-2 gap-3">
-            {/* Take Profit */}
             <div>
               <label className="flex items-center gap-2 cursor-pointer mb-2">
                 <input
@@ -434,7 +426,6 @@ export default function ManualTrader() {
               )}
             </div>
 
-            {/* Stop Loss */}
             <div>
               <label className="flex items-center gap-2 cursor-pointer mb-2">
                 <input
@@ -463,7 +454,6 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          {/* Session row */}
           {(takeProfitEnabled || stopLossEnabled) && (
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
               <span className="text-[10px] text-gray-500">Session P/L:</span>
