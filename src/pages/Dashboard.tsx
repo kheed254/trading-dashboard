@@ -4,7 +4,7 @@ import SignalCard from '../components/SignalCard';
 import { useMultiTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws-context';
 
-/* ---------- Signals data (kept from your original) ---------- */
+/* ---------- Signals data ---------- */
 const signals = [
   {
     id: 1,
@@ -92,7 +92,6 @@ export default function Dashboard() {
     '1HZ10V',
   ]);
 
-  /* Debug log */
   useEffect(() => {
     if (authorized && user) {
       console.log(
@@ -109,7 +108,6 @@ export default function Dashboard() {
     }
   }, [authorized, user, authError]);
 
-  /* Request statement on mount if authorized */
   useEffect(() => {
     if (authorized) {
       requestStatement(10);
@@ -117,11 +115,9 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
-  /* Format money */
   const fmtMoney = (n: number) =>
     n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  /* Format relative time */
   const fmtTime = (ts: number) => {
     const d = new Date(ts * 1000);
     const now = new Date();
@@ -138,7 +134,6 @@ export default function Dashboard() {
       {/* ============ TOP: ACCOUNT SUMMARY ============ */}
       <section className="bg-gradient-to-br from-[#0b1c3f] via-[#12295a] to-[#0b3d91] text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-          {/* Greeting */}
           <div className="mb-6">
             <h1 className="text-2xl md:text-3xl font-bold">
               Welcome back{user?.loginid ? `, ${user.loginid}` : ''} 👋
@@ -148,18 +143,14 @@ export default function Dashboard() {
             </p>
           </div>
 
-          {/* Account summary cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Balance card */}
             <div className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-5 md:col-span-2">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs text-white/60 uppercase tracking-wider font-medium">
                   Account Balance
                 </span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  user?.isVirtual 
-                    ? 'bg-amber-500 text-white' 
-                    : 'bg-green-500 text-white'
+                  user?.isVirtual ? 'bg-amber-500 text-white' : 'bg-green-500 text-white'
                 }`}>
                   {user?.isVirtual ? 'DEMO' : 'REAL'}
                 </span>
@@ -174,7 +165,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Account info card */}
             <div className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-5">
               <div className="text-xs text-white/60 uppercase tracking-wider font-medium mb-2">
                 Account
@@ -194,12 +184,11 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Quick Actions Grid */}
           <div className="mt-6">
             <div className="text-xs text-white/60 uppercase tracking-wider font-medium mb-3">
               Quick Actions
             </div>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
               {QUICK_ACTIONS.map((action) => (
                 <Link
                   key={action.to}
@@ -267,10 +256,7 @@ export default function Dashboard() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="text-lg font-semibold text-navy">Recent Activity</h2>
-              <Link
-                to="/reports"
-                className="text-xs text-teal-600 hover:underline font-medium"
-              >
+              <Link to="/reports" className="text-xs text-teal-600 hover:underline font-medium">
                 View all →
               </Link>
             </div>
