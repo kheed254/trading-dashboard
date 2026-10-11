@@ -29,6 +29,8 @@ export default function AnalysisTool() {
   const [ticksWindow, setTicksWindow] = useState(1000);
   const [showTradingConfig, setShowTradingConfig] = useState(false);
   const [wideEyeActive, setWideEyeActive] = useState(true);
+  const [ouTarget, setOuTarget] = useState(5);
+  const [mdTarget, setMdTarget] = useState(5);
 
   const symbol = MARKET_MAP[marketName] as any;
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, ticksWindow);
@@ -36,21 +38,84 @@ export default function AnalysisTool() {
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-  /* Determine hottest digit (highest %) */
+  /* ---- Hottest digit ---- */
   const hottestDigit = useMemo(() => {
     if (!digitStats.length) return null;
     return digitStats.reduce((max, d) => (d.pct > max.pct ? d : max), digitStats[0]).digit;
   }, [digitStats]);
 
-  /* Ring color rules:
-     - Orange = hottest digit (highest %)
-     - Green = even digit
-     - Red = odd digit
-     - Gray = default */
+  /* ---- Even/Odd ---- */
+  const evenOdd = useMemo(() => {
+    let even = 0, odd = 0;
+    digits.forEach((d) => (d % 2 === 0 ? even++ : odd++));
+    const total = even + odd || 1;
+    return {
+      even,
+      odd,
+      evenPct: (even / total) * 100,
+      oddPct: (odd / total) * 100,
+    };
+  }, [digits]);
+
+  /* ---- Over/Under/Equal (against ouTarget) ---- */
+  const overUnder = useMemo(() => {
+    let under = 0, equal = 0, over = 0;
+    digits.forEach((d) => {
+      if (d < ouTarget) under++;
+      else if (d === ouTarget) equal++;
+      else over++;
+    });
+    const total = digits.length || 1;
+    return {
+      under, equal, over,
+      underPct: (under / total) * 100,
+      equalPct: (equal / total) * 100,
+      overPct: (over / total) * 100,
+    };
+  }, [digits, ouTarget]);
+
+  /* ---- Matches/Differs (against mdTarget) ---- */
+  const matchesDiffers = useMemo(() => {
+    let matches = 0, differs = 0;
+    digits.forEach((d) => (d === mdTarget ? matches++ : differs++));
+    const total = digits.length || 1;
+    return {
+      matches, differs,
+      matchesPct: (matches / total) * 100,
+      differsPct: (differs / total) * 100,
+    };
+  }, [digits, mdTarget]);
+
+  /* ---- Recent sequences (last 12 ticks) ---- */
+  const recentEO = useMemo(() => digits.slice(-12).map((d) => (d % 2 === 0 ? 'E' : 'O')), [digits]);
+  const recentUO = useMemo(
+    () => digits.slice(-12).map((d) => (d < ouTarget ? 'U' : d === ouTarget ? '=' : 'O')),
+    [digits, ouTarget]
+  );
+  const recentMD = useMemo(() => digits.slice(-12).map((d) => (d === mdTarget ? 'M' : 'D')), [digits, mdTarget]);
+
+  /* ---- Ring color ---- */
   const getRingColor = (digit: number) => {
     if (digit === hottestDigit) return { stroke: '#f97316', bg: '#fff7ed' };
     if (digit % 2 === 0) return { stroke: '#10b981', bg: '#ecfdf5' };
     return { stroke: '#ef4444', bg: '#fef2f2' };
+  };
+
+  /* ---- Pill style for E/O, U/= /O, M/D ---- */
+  const pillStyle = (kind: string) => {
+    switch (kind) {
+      case 'E':
+      case 'U':
+      case 'M':
+        return 'bg-teal-500 text-white';
+      case 'O':
+        return 'bg-red-500 text-white';
+      case '=':
+      case 'D':
+        return 'bg-gray-500 text-white';
+      default:
+        return 'bg-gray-300 text-white';
+    }
   };
 
   return (
@@ -75,7 +140,7 @@ export default function AnalysisTool() {
       </div>
 
       <div className="px-4 py-4 max-w-2xl mx-auto">
-        {/* ============ TRADING CONFIGURATION (right) ============ */}
+        {/* ============ TRADING CONFIGURATION ============ */}
         <div className="flex justify-end mb-4">
           <button
             onClick={() => setShowTradingConfig(true)}
@@ -160,7 +225,7 @@ export default function AnalysisTool() {
         </div>
 
         {/* ============ DIGIT DISTRIBUTION ============ */}
-        <div className="mb-5">
+        <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-medium text-gray-700">
               Last {ticksWindow} ticks digit distribution
@@ -207,9 +272,190 @@ export default function AnalysisTool() {
             })}
           </div>
         </div>
+
+        {/* ============ EVEN/ODD ============ */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Even/Odd</h3>
+
+          <div className="space-y-3">
+            {/* Even card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Even</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{evenOdd.even}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({evenOdd.evenPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all" style={{ width: `${evenOdd.evenPct}%` }} />
+              </div>
+            </div>
+
+            {/* Odd card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Odd</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{evenOdd.odd}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({evenOdd.oddPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 transition-all" style={{ width: `${evenOdd.oddPct}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Recent E/O */}
+          <div className="mt-4">
+            <div className="text-xs text-gray-500 mb-2">Recent E/O</div>
+            <div className="flex flex-wrap gap-1.5">
+              {recentEO.map((k, i) => (
+                <span key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${pillStyle(k)}`}>
+                  {k}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ============ OVER/UNDER ============ */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Over/Under</h3>
+
+          <div className="flex items-center gap-3 mb-4">
+            <label className="text-sm text-gray-700 whitespace-nowrap">Over/Under:</label>
+            <select
+              value={ouTarget}
+              onChange={(e) => setOuTarget(Number(e.target.value))}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:border-blue-500 font-mono text-center"
+            >
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-3">
+            {/* Under card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Under</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{overUnder.under}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({overUnder.underPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all" style={{ width: `${overUnder.underPct}%` }} />
+              </div>
+            </div>
+
+            {/* Equal card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Equal</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{overUnder.equal}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({overUnder.equalPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gray-500 transition-all" style={{ width: `${overUnder.equalPct}%` }} />
+              </div>
+            </div>
+
+            {/* Over card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Over</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{overUnder.over}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({overUnder.overPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 transition-all" style={{ width: `${overUnder.overPct}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Recent U/=/O */}
+          <div className="mt-4">
+            <div className="text-xs text-gray-500 mb-2">Recent U/= /O</div>
+            <div className="flex flex-wrap gap-1.5">
+              {recentUO.map((k, i) => (
+                <span key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${pillStyle(k)}`}>
+                  {k}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ============ MATCHES/DIFFERS ============ */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Matches/Differs</h3>
+
+          <div className="flex items-center gap-3 mb-4">
+            <label className="text-sm text-gray-700 whitespace-nowrap">Digit:</label>
+            <select
+              value={mdTarget}
+              onChange={(e) => setMdTarget(Number(e.target.value))}
+              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:border-blue-500 font-mono text-center"
+            >
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-3">
+            {/* Matches card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Matches</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{matchesDiffers.matches}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({matchesDiffers.matchesPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all" style={{ width: `${matchesDiffers.matchesPct}%` }} />
+              </div>
+            </div>
+
+            {/* Differs card */}
+            <div className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Differs</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-navy font-mono">{matchesDiffers.differs}</span>
+                  <span className="text-xs text-gray-500 ml-1.5">({matchesDiffers.differsPct.toFixed(1)}%)</span>
+                </div>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 transition-all" style={{ width: `${matchesDiffers.differsPct}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Recent M/D */}
+          <div className="mt-4">
+            <div className="text-xs text-gray-500 mb-2">Recent M/D</div>
+            <div className="flex flex-wrap gap-1.5">
+              {recentMD.map((k, i) => (
+                <span key={i} className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${pillStyle(k)}`}>
+                  {k}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* ============ BOTTOM DOCK (Bot is not running) ============ */}
+      {/* ============ BOTTOM DOCK ============ */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 z-20">
         <div className="flex items-center gap-2 px-3 py-2">
           <button className="bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 shrink-0">
@@ -227,17 +473,22 @@ export default function AnalysisTool() {
         </div>
       </div>
 
-      {/* ============ FLOATING AI BUTTON ============ */}
-      <button className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-10">
-        AI
-      </button>
-
-      {/* ============ RISK DISCLAIMER PILL ============ */}
+      {/* ============ RISK DISCLAIMER (standalone floating) ============ */}
       <button
         onClick={() => alert('Trading derivatives involves significant risk. Only trade with money you can afford to lose.')}
-        className="fixed bottom-20 left-4 bg-yellow-400 hover:bg-yellow-500 text-navy text-[11px] font-bold px-3 py-1.5 rounded shadow-md z-10"
+        className="fixed bottom-20 left-4 bg-yellow-400 hover:bg-yellow-500 text-navy text-[11px] font-bold px-3 py-1.5 rounded shadow-lg z-[100] hover:scale-105 transition-transform pointer-events-auto"
+        aria-label="Risk Disclaimer"
       >
         Risk Disclaimer
+      </button>
+
+      {/* ============ AI BUTTON (standalone floating) ============ */}
+      <button
+        onClick={() => alert('AI Assistant coming soon')}
+        className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform pointer-events-auto"
+        aria-label="AI Assistant"
+      >
+        AI
       </button>
 
       {/* ============ TRADING CONFIGURATION MODAL ============ */}
