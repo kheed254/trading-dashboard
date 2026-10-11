@@ -193,7 +193,6 @@ export default function BotBuilder() {
   const [showQuickStrategy, setShowQuickStrategy] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileReportOpen, setMobileReportOpen] = useState(false);
-  const [showRiskDisclaimer, setShowRiskDisclaimer] = useState(false);
   const [showWhatsThis, setShowWhatsThis] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
@@ -407,7 +406,6 @@ export default function BotBuilder() {
     setDetailTab,
     consecutiveLosses: consecutiveLossesRef.current,
     currentStake,
-    onRiskDisclaimerClick: () => setShowRiskDisclaimer(true),
     onWhatsThisClick: () => setShowWhatsThis(true),
   };
 
@@ -553,26 +551,6 @@ export default function BotBuilder() {
         </>
       )}
 
-      {showRiskDisclaimer && (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowRiskDisclaimer(false)}>
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-navy mb-3">⚠️ Risk Disclaimer</h3>
-            <p className="text-sm text-gray-600 leading-relaxed mb-3">
-              Trading derivatives involves significant risk. You may lose some or all of your invested capital. Never trade with money you cannot afford to lose.
-            </p>
-            <p className="text-sm text-gray-600 leading-relaxed mb-4">
-              Past performance does not guarantee future results. Bots and automated strategies carry the same market risks as manual trading.
-            </p>
-            <button
-              onClick={() => setShowRiskDisclaimer(false)}
-              className="w-full bg-teal-500 hover:bg-teal-600 text-white font-semibold py-2.5 rounded-lg transition"
-            >
-              I Understand
-            </button>
-          </div>
-        </div>
-      )}
-
       {showWhatsThis && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4" onClick={() => setShowWhatsThis(false)}>
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -600,7 +578,7 @@ export default function BotBuilder() {
 }
 
 /* ---------- ReportBody ---------- */
-function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJournal, detailTab, setDetailTab, consecutiveLosses, currentStake, onRiskDisclaimerClick, onWhatsThisClick }: {
+function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJournal, detailTab, setDetailTab, consecutiveLosses, currentStake, onWhatsThisClick }: {
   botRunning: boolean;
   botStats: { runs: number; wins: number; losses: number; totalStake: number; totalPayout: number; pl: number };
   openTrades: any[];
@@ -610,7 +588,6 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
   setDetailTab: (k: 'summary' | 'transactions' | 'journal') => void;
   consecutiveLosses: number;
   currentStake: number | null;
-  onRiskDisclaimerClick: () => void;
   onWhatsThisClick: () => void;
 }) {
   const active = openTrades.find((t) => t.contract_id === activeContractId && !t.is_sold);
@@ -711,6 +688,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         )}
       </div>
 
+      {/* Stats footer — Risk Disclaimer removed */}
       <div className="border-t border-gray-200 pt-3 pb-2 px-4 bg-gray-50 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1" />
@@ -725,14 +703,6 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
           <Stat label="Total stake" value={`${botStats.totalStake.toFixed(2)} USD`} />
           <Stat label="Total payout" value={`${botStats.totalPayout.toFixed(2)} USD`} />
           <Stat label="No. of runs" value={String(botStats.runs)} />
-        </div>
-        <div className="flex items-center justify-center mb-3">
-          <button
-            onClick={onRiskDisclaimerClick}
-            className="bg-yellow-400 hover:bg-yellow-500 text-navy text-[11px] font-bold px-4 py-1.5 rounded shadow-sm transition"
-          >
-            Risk Disclaimer
-          </button>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <Stat label="Contracts lost" value={String(botStats.losses)} />
