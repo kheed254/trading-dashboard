@@ -6,7 +6,7 @@
    - Returns the market with the highest AI Score
    ================================================================ */
 
-const DERIV_WS_URL = 'wss://ws.derivws.com/websockets/v3?app_id=1089';
+const DERIV_WS_URL = 'wss://api.derivws.com/trading/v1/options/ws/public';
 
 export type ScanMode = {
   over: number;
@@ -14,22 +14,22 @@ export type ScanMode = {
 };
 
 export type MarketResult = {
-  market: string;          // display name
-  symbol: string;          // Deriv symbol
-  aiScore: number;         // %
-  winRate: number;         // %
-  recent: number;          // %
+  market: string;
+  symbol: string;
+  aiScore: number;
+  winRate: number;
+  recent: number;
   samples: number;
   hottestDigit: number;
   coldestDigit: number;
   missingDigit: number;
   lowStreak: number;
   highStreak: number;
-  tradeTypeLabel: string;  // e.g. "Over 3 Recovery Over 4"
+  tradeTypeLabel: string;
 };
 
 export type ScanProgress = {
-  index: number;           // current market index (1-based)
+  index: number;
   total: number;
   currentMarket: string;
 };
@@ -57,6 +57,7 @@ function fetchTicks(symbol: string, count: number): Promise<number[]> {
     }, 15000);
 
     ws.onopen = () => {
+      // The newer Deriv API expects the same ticks_history message format
       ws.send(
         JSON.stringify({
           ticks_history: symbol,
@@ -73,14 +74,15 @@ function fetchTicks(symbol: string, count: number): Promise<number[]> {
         const data = JSON.parse(event.data);
         if (data.msg_type === 'history' && data.history) {
           clearTimeout(timer);
-          const prices: number[] = data.history.prices.map((p: string) => Number(p));
-          // Convert to last digits
+          const prices: (string | number)[] = data.history.prices || [];
           const digits = prices.map((p) => {
-            const s = p.toFixed(2);
-            return Number(s[s.length - 1]);
-          });
+            const s = typeof p === 'number' ? p.toFixed(2) : String(p);
+            const lastChar = s[s.length - 1];
+            return Number(lastChar);
+          }).filter((d) => !isNaN(d) && d >= 0 && d <= 9);
           cleanup();
           resolve(digits);
+          return;
         }
         if (data.error) {
           clearTimeout(timer);
@@ -191,6 +193,8 @@ export async function scanMarkets(
       if (digits.length >= 50) {
         const stats = computeStats(digits, mode);
         all.push({ market: m.name, symbol: m.symbol, ...stats });
+      } else {
+        console.warn(`[Scanner] ${m.name}: only ${digits.length} ticks returned, skipping`);
       }
     } catch (err) {
       console.warn(`[Scanner] Skipped ${m.name}:`, err);
