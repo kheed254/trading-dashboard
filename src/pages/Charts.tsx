@@ -1,52 +1,49 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import {
+  createChart,
+  CandlestickSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 
 /* ---------- Config ---------- */
 const MARKET_MAP: Record<string, string> = {
-  'Bull Market Index': 'BOOM1000',
-  'Bear Market Index': 'CRASH1000',
   'Volatility 10 (1s) Index': '1HZ10V',
   'Volatility 25 (1s) Index': '1HZ25V',
+  'Volatility 30 (1s) Index': '1HZ30V',
   'Volatility 50 (1s) Index': '1HZ50V',
   'Volatility 75 (1s) Index': '1HZ75V',
   'Volatility 100 (1s) Index': '1HZ100V',
+  'Volatility 10 Index': 'R_10',
+  'Volatility 25 Index': 'R_25',
+  'Volatility 50 Index': 'R_50',
+  'Volatility 75 Index': 'R_75',
   'Volatility 100 Index': 'R_100',
 };
 
 const MARKETS = Object.keys(MARKET_MAP);
 
-const TIMEFRAMES: { label: string; granularity: number }[] = [
-  { label: '1m', granularity: 60 },
-  { label: '5m', granularity: 300 },
-  { label: '15m', granularity: 900 },
-  { label: '1h', granularity: 3600 },
-  { label: '1d', granularity: 86400 },
+const TIMEFRAMES: { label: string; seconds: number }[] = [
+  { label: '1m', seconds: 60 },
+  { label: '5m', seconds: 300 },
+  { label: '15m', seconds: 900 },
 ];
 
-const DERIV_WS_URL =
-  'wss://api.derivws.com/trading/v1/options/ws/public';
+const DERIV_WS_URL = 'wss://ws.derivws.com/websockets/v3?app_id=1089';
 
-type Candle = {
-  time: UTCTimestamp;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-};
-
+/* ---------- Component ---------- */
 export default function Charts() {
-  const [marketName, setMarketName] = useState('Bull Market Index');
-  const [tfIndex, setTfIndex] = useState(0); // 1m default
+  const [marketName, setMarketName] = useState('Volatility 10 (1s) Index');
+  const [timeframe, setTimeframe] = useState(TIMEFRAMES[0]);
   const [lastPrice, setLastPrice] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const currentCandleRef = useRef<Candle | null>(null);
 
   const symbol = MARKET_MAP[marketName];
-  const granularity = TIMEFRAMES[tfIndex].granularity;
 
   /* ---------- Create chart once ---------- */
   useEffect(() => {
@@ -58,20 +55,23 @@ export default function Charts() {
         textColor: '#333',
       },
       grid: {
-        vertLines: { color: '#f0f0f0' },
-        horzLines: { color: '#f0f0f0' },
+        vertLines: { color: '#f5f5f5' },
+        horzLines: { color: '#f5f5f5' },
       },
       rightPriceScale: { borderColor: '#e5e5e5' },
-      timeScale: { borderColor: '#e5e5e5', timeVisible: true },
-      crosshair: { mode: 0 },
+      timeScale: {
+        borderColor: '#e5e5e5',
+        timeVisible: true,
+        secondsVisible: false,
+      },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#26b0a3',
+      upColor: '#10b981',
       downColor: '#ef4444',
-      borderUpColor: '#26b0a3',
+      borderUpColor: '#10b981',
       borderDownColor: '#ef4444',
-      wickUpColor: '#26b0a3',
+      wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
     });
 
@@ -96,29 +96,24 @@ export default function Charts() {
     };
   }, []);
 
-  /* ---------- Stream data on market or timeframe change ---------- */
+  /* ---------- Stream candles ---------- */
   useEffect(() => {
     const ws = new WebSocket(DERIV_WS_URL);
     let closed = false;
 
     setConnected(false);
     setLastPrice(null);
-    currentCandleRef.current = null;
 
     ws.onopen = () => {
       setConnected(true);
-      const end = Math.floor(Date.now() / 1000);
-      const start = end - granularity * 200;
-
       ws.send(
         JSON.stringify({
           ticks_history: symbol,
           adjust_start_time: 1,
           count: 200,
           end: 'latest',
-          start,
           style: 'candles',
-          granularity,
+          granularity: timeframe.seconds,
           subscribe: 1,
         })
       );
@@ -129,40 +124,35 @@ export default function Charts() {
       try {
         const data = JSON.parse(event.data);
 
-        /* Historical candles */
-        if (data.msg_type === 'candles' && Array.isArray(data.candles)) {
-          const candles: Candle[] = data.candles.map((c: any) => ({
-            time: c.epoch as UTCTimestamp,
+        // Initial history
+        if (data.msg_type === 'candles' && data.candles) {
+          const points = data.candles.map((c: any) => ({
+            time: Number(c.epoch) as UTCTimestamp,
             open: Number(c.open),
             high: Number(c.high),
             low: Number(c.low),
             close: Number(c.close),
           }));
-          seriesRef.current?.setData(candles);
-          if (candles.length > 0) {
-            currentCandleRef.current =
-              candles[candles.length - 1];
-            setLastPrice(candles[candles.length - 1].close);
-          }
+          seriesRef.current?.setData(points);
+          if (points.length > 0) setLastPrice(points[points.length - 1].close);
           chartRef.current?.timeScale().fitContent();
         }
 
-        /* Live OHLC updates */
+        // Live updates
         if (data.msg_type === 'ohlc' && data.ohlc) {
-          const o = data.ohlc;
-          const candle: Candle = {
-            time: o.open_time as UTCTimestamp,
-            open: Number(o.open),
-            high: Number(o.high),
-            low: Number(o.low),
-            close: Number(o.close),
+          const c = data.ohlc;
+          const bar = {
+            time: Number(c.open_time ?? c.epoch) as UTCTimestamp,
+            open: Number(c.open),
+            high: Number(c.high),
+            low: Number(c.low),
+            close: Number(c.close),
           };
-          seriesRef.current?.update(candle);
-          currentCandleRef.current = candle;
-          setLastPrice(candle.close);
+          seriesRef.current?.update(bar);
+          setLastPrice(bar.close);
         }
       } catch {
-        /* ignore parse errors */
+        /* ignore */
       }
     };
 
@@ -173,76 +163,54 @@ export default function Charts() {
       closed = true;
       try {
         if (ws.readyState === WebSocket.OPEN) {
-          ws.send(
-            JSON.stringify({
-              forget_all: 'candles',
-            })
-          );
+          ws.send(JSON.stringify({ forget_all: 'candles' }));
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
       ws.close();
     };
-  }, [symbol, granularity]);
+  }, [symbol, timeframe]);
 
   return (
-    <main className="h-[calc(100vh-56px)] flex flex-col bg-white">
-      {/* Top bar */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-gray-50">
-        {/* Symbol dropdown */}
-        <div className="flex flex-col">
-          <select
-            value={marketName}
-            onChange={(e) => setMarketName(e.target.value)}
-            className="bg-white border border-gray-300 rounded-md px-3 py-1.5 text-sm font-semibold text-navy outline-none cursor-pointer"
-          >
-            {MARKETS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                connected ? 'bg-green-500' : 'bg-red-500'
-              }`}
-            />
-            {lastPrice !== null ? lastPrice.toFixed(4) : '—'}
-            <span className="text-gray-400">
-              {connected ? 'live' : 'connecting'}
-            </span>
-          </div>
-        </div>
+    <main className="h-[calc(100vh-56px-48px)] md:h-[calc(100vh-56px)] flex flex-col bg-white overflow-hidden">
+      {/* ============ TOOLBAR ============ */}
+      <div className="px-3 py-3 border-b border-gray-200 flex items-center gap-3 flex-wrap">
+        <select
+          value={marketName}
+          onChange={(e) => setMarketName(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:border-blue-500 min-w-[200px]"
+        >
+          {MARKETS.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
 
-        {/* Timeframes */}
-        <div className="flex gap-1 ml-4">
-          {TIMEFRAMES.map((tf, i) => (
+        <div className="flex gap-1">
+          {TIMEFRAMES.map((tf) => (
             <button
               key={tf.label}
-              onClick={() => setTfIndex(i)}
-              className={`px-3 py-1.5 text-xs rounded font-medium transition ${
-                tfIndex === i
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-100'
+              onClick={() => setTimeframe(tf)}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                timeframe.label === tf.label
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
               }`}
             >
               {tf.label}
             </button>
           ))}
         </div>
+
+        <div className="ml-auto flex items-center gap-2 text-sm">
+          <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+          <span className="text-gray-500 font-mono tabular-nums">
+            {lastPrice !== null ? lastPrice.toFixed(4) : '—'}
+          </span>
+          <span className="text-gray-400 text-xs">live</span>
+        </div>
       </div>
 
-      {/* Chart */}
-      <div className="flex-1 relative">
-        <div ref={chartContainerRef} className="w-full h-full" />
-
-        {/* AI floating button */}
-        <button className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold text-lg shadow-lg flex items-center justify-center z-10">
-          AI
-        </button>
-      </div>
+      {/* ============ CHART ============ */}
+      <div ref={chartContainerRef} className="flex-1 w-full" />
     </main>
   );
 }
