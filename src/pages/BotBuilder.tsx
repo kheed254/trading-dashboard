@@ -6,7 +6,7 @@ import { useBotStatus } from '../lib/bot-status';
 
 const MARKETS = [
   {
-    group: 'Derived › Continuous Indices',
+    group: 'Derived › 1-Second Indices',
     options: [
       'Volatility 10 (1s) Index',
       'Volatility 25 (1s) Index',
@@ -14,6 +14,16 @@ const MARKETS = [
       'Volatility 50 (1s) Index',
       'Volatility 75 (1s) Index',
       'Volatility 100 (1s) Index',
+    ],
+  },
+  {
+    group: 'Derived › Standard Indices',
+    options: [
+      'Volatility 10 Index',
+      'Volatility 25 Index',
+      'Volatility 50 Index',
+      'Volatility 75 Index',
+      'Volatility 100 Index',
     ],
   },
   {
@@ -64,6 +74,11 @@ const SYMBOL_MAP: Record<string, string> = {
   'Volatility 50 (1s) Index': '1HZ50V',
   'Volatility 75 (1s) Index': '1HZ75V',
   'Volatility 100 (1s) Index': '1HZ100V',
+  'Volatility 10 Index': 'R_10',
+  'Volatility 25 Index': 'R_25',
+  'Volatility 50 Index': 'R_50',
+  'Volatility 75 Index': 'R_75',
+  'Volatility 100 Index': 'R_100',
   'Bull Market Index': 'BOOM1000',
   'Bear Market Index': 'CRASH1000',
   'EUR/USD': 'frxEURUSD',
