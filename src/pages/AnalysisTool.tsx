@@ -84,24 +84,6 @@ export default function AnalysisTool() {
         </div>
       </div>
 
-      {/* ============ RISK DISCLAIMER (standalone floating) ============ */}
-      <button
-        onClick={() => alert('Trading derivatives involves significant risk. Only trade with money you can afford to lose.')}
-        className="fixed bottom-20 left-4 bg-yellow-400 hover:bg-yellow-500 text-navy text-[11px] font-bold px-3 py-1.5 rounded shadow-lg z-[100] hover:scale-105 transition-transform pointer-events-auto"
-        aria-label="Risk Disclaimer"
-      >
-        Risk Disclaimer
-      </button>
-
-      {/* ============ AI BUTTON (standalone floating) ============ */}
-      <button
-        onClick={() => alert('AI Assistant coming soon')}
-        className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform pointer-events-auto"
-        aria-label="AI Assistant"
-      >
-        AI
-      </button>
-
       <style>{`
         .tab-scroll::-webkit-scrollbar { display: none; }
         .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
@@ -494,18 +476,15 @@ function SignalsTab() {
   const symbol = MARKET_MAP[marketName] as any;
   const { price, currentDigit, digits } = useDigitStream(symbol, 1000);
 
-  /* ---- Analysis logic ---- */
-  const targetDigit = 5; // For Matches & Differs
+  const targetDigit = 5;
 
   const analyze = () => {
-    // Compute matches/differs
     let matches = 0, differs = 0;
     digits.forEach((d) => (d === targetDigit ? matches++ : differs++));
     const total = digits.length || 1;
     const matchPct = (matches / total) * 100;
     const differPct = (differs / total) * 100;
 
-    // Build terminal lines
     const lines = [
       `Analysis Dashboard - ${strategy} on ${symbol}`,
       `Analysis Complete!`,
@@ -518,7 +497,6 @@ function SignalsTab() {
     setCountdown(5);
   };
 
-  /* ---- Countdown effect ---- */
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
@@ -547,7 +525,6 @@ function SignalsTab() {
         </button>
       </div>
 
-      {/* ============ SIGNAL ANALYZER PANEL (hacker theme) ============ */}
       <div
         className="relative rounded-2xl overflow-hidden shadow-2xl mb-4"
         style={{
@@ -555,7 +532,6 @@ function SignalsTab() {
           minHeight: '520px',
         }}
       >
-        {/* Green hex pattern overlay */}
         <div
           className="absolute inset-0 opacity-20 pointer-events-none"
           style={{
@@ -564,7 +540,6 @@ function SignalsTab() {
           }}
         />
 
-        {/* Red glowing title */}
         <h2
           className="relative text-center pt-6 pb-4 text-4xl font-extrabold tracking-wider"
           style={{
@@ -576,9 +551,7 @@ function SignalsTab() {
           Signal Analyzer
         </h2>
 
-        {/* Main content */}
         <div className="relative px-6 pb-6">
-          {/* Select Strategy */}
           <div className="mb-5">
             <div className="text-center text-gray-200 text-sm font-semibold mb-2 drop-shadow-md">
               Select Strategy
@@ -602,7 +575,6 @@ function SignalsTab() {
             </select>
           </div>
 
-          {/* Select Market */}
           <div className="mb-6">
             <div className="text-center text-gray-200 text-sm font-semibold mb-2 drop-shadow-md">
               Select Market
@@ -626,7 +598,6 @@ function SignalsTab() {
             </select>
           </div>
 
-          {/* Latest Tick / Last Digit display */}
           <div
             className="rounded-lg px-4 py-6 mb-6 text-center"
             style={{
@@ -657,7 +628,6 @@ function SignalsTab() {
             </div>
           </div>
 
-          {/* Analyse button */}
           <button
             onClick={analyze}
             className="w-full py-3.5 rounded-lg font-bold text-white text-base shadow-lg hover:opacity-90 active:scale-[0.98] transition"
@@ -670,7 +640,6 @@ function SignalsTab() {
           </button>
         </div>
 
-        {/* Terminal output panel (opens when Analyse is clicked) */}
         {terminalOpen && (
           <div
             className="absolute inset-4 rounded-lg z-20 flex flex-col overflow-hidden"
@@ -680,7 +649,6 @@ function SignalsTab() {
               boxShadow: '0 0 40px rgba(0,255,0,0.3)',
             }}
           >
-            {/* Terminal header */}
             <div className="flex items-center gap-1.5 px-3 py-2.5 border-b border-green-900/40">
               <span className="w-3 h-3 rounded-full bg-red-500" />
               <span className="w-3 h-3 rounded-full bg-red-500" />
@@ -693,7 +661,6 @@ function SignalsTab() {
               </button>
             </div>
 
-            {/* Terminal body */}
             <div
               className="flex-1 p-4 overflow-y-auto text-sm leading-relaxed"
               style={{ fontFamily: 'monospace' }}
