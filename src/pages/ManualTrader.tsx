@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws-context';
@@ -39,18 +39,18 @@ export default function ManualTrader() {
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
-  // Stake
-  const [stake, setStake] = useState(10);
-
-  // FIX: Take Profit state
+  // Take Profit state
   const [takeProfitEnabled, setTakeProfitEnabled] = useState(false);
-  const [takeProfitTarget, setTakeProfitTarget] = useState(50); // USD
+  const [takeProfitTarget, setTakeProfitTarget] = useState(50);
   const [takeProfitReached, setTakeProfitReached] = useState(false);
-  const [sessionPL, setSessionPL] = useState(0); // cumulative P/L for this session
+  const [sessionPL, setSessionPL] = useState(0);
 
   // Live payouts from Deriv
   const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
   const [secondaryPayout, setSecondaryPayout] = useState<number | null>(null);
+
+  // Stake
+  const [stake, setStake] = useState(10);
 
   const { authorized, placeTrade, subscribeProposal, unsubscribeProposal, openTrades } = useAuthWs();
 
@@ -107,21 +107,19 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized, symbol, tradeType, selectedDigit, stake]);
 
-  /* ---- FIX: Track settled trades for Take Profit ---- */
-  const trackedContractIds = useRef<Set<number>>(new Set());
+  /* ---- Track settled trades for Take Profit ---- */
+  const trackedContractIds = useMemo(() => new Set<number>(), []);
   useEffect(() => {
     if (!takeProfitEnabled) return;
-    
+
     openTrades.forEach((t) => {
-      if (t.is_sold && !trackedContractIds.current.has(t.contract_id)) {
-        trackedContractIds.current.add(t.contract_id);
+      if (t.is_sold && !trackedContractIds.has(t.contract_id)) {
+        trackedContractIds.add(t.contract_id);
         const newPL = sessionPL + t.profit;
         setSessionPL(newPL);
-        console.log(`[Manual Trader] Settled P/L: ${t.profit.toFixed(2)}, Session total: ${newPL.toFixed(2)}`);
 
         if (takeProfitEnabled && newPL >= takeProfitTarget) {
           setTakeProfitReached(true);
-          console.log(`[Manual Trader] 🎯 Take profit hit! Target: ${takeProfitTarget}`);
         }
       }
     });
@@ -133,16 +131,14 @@ export default function ManualTrader() {
     if (takeProfitEnabled) {
       setSessionPL(0);
       setTakeProfitReached(false);
-      trackedContractIds.current = new Set();
+      trackedContractIds.clear();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [takeProfitEnabled]);
 
   /* ---- Stake controls ---- */
   const adjustStake = (delta: number) => {
-    setStake((s) => {
-      const next = +(s + delta).toFixed(2);
-      return Math.max(0.35, next);
-    });
+    setStake((s) => Math.max(0.35, +(s + delta).toFixed(2)));
   };
 
   /* ---- Place trade ---- */
@@ -198,7 +194,6 @@ export default function ManualTrader() {
     tradeType === 'callput' ? 'Fall' :
     tradeType === 'higherlower' ? 'Lower' : 'No Touch';
 
-  /* ---- Trade buttons disabled? ---- */
   const buttonsDisabled = isTrading || !authorized || takeProfitReached;
 
   return (
@@ -325,7 +320,7 @@ export default function ManualTrader() {
           ))}
         </div>
 
-        {/* FIX: Take Profit checkbox and input */}
+        {/* Take Profit */}
         <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
           <label className="flex items-center gap-2 cursor-pointer mb-2">
             <input
@@ -355,7 +350,6 @@ export default function ManualTrader() {
                 <span className="text-xs text-gray-400">USD</span>
               </div>
 
-              {/* Session P/L display */}
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
                 <span className="text-xs text-gray-500">Session P/L:</span>
                 <span className={`text-sm font-bold ${sessionPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -363,7 +357,6 @@ export default function ManualTrader() {
                 </span>
               </div>
 
-              {/* Progress bar */}
               {sessionPL > 0 && (
                 <div className="mt-2">
                   <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -389,9 +382,7 @@ export default function ManualTrader() {
           <button
             onClick={() => handleTrade('primary')}
             disabled={buttonsDisabled}
-            className={`rounded-xl overflow-hidden transition ${
-              buttonsDisabled ? 'opacity-50' : ''
-            }`}
+            className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
           >
             <div className="bg-teal-500 text-white py-4 flex items-center justify-center gap-2">
               <span className="text-lg">
@@ -410,9 +401,7 @@ export default function ManualTrader() {
           <button
             onClick={() => handleTrade('secondary')}
             disabled={buttonsDisabled}
-            className={`rounded-xl overflow-hidden transition ${
-              buttonsDisabled ? 'opacity-50' : ''
-            }`}
+            className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
           >
             <div className="bg-red-500 text-white py-4 flex items-center justify-center gap-2">
               <span className="text-lg">
