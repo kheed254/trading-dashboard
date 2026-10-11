@@ -97,7 +97,7 @@ export default function ManualTrader() {
     }
   };
 
-  /* ---- Subscribe to live payouts ---- */
+  /* ---- Subscribe to live payouts (increased delay for socket readiness) ---- */
   useEffect(() => {
     if (!authorized) return;
 
@@ -113,14 +113,14 @@ export default function ManualTrader() {
         { symbol, contractType: primary, stake, duration, durationUnit: 't', barrier },
         (payout) => setPrimaryPayout(payout)
       );
-    }, 1000);
+    }, 2000);
 
     const secondaryTimeout = setTimeout(() => {
       subscribeProposal(
         { symbol, contractType: secondary, stake, duration, durationUnit: 't', barrier },
         (payout) => setSecondaryPayout(payout)
       );
-    }, 1500);
+    }, 2500);
 
     return () => {
       clearTimeout(primaryTimeout);
