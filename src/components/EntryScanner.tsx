@@ -103,7 +103,7 @@ export function EntryScanner({ onClose }: { onClose: () => void }) {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const panelW = Math.min(w - 24, 440);
-    const panelH = 600;
+    const panelH = 620;
     setPosition({
       x: Math.max(12, (w - panelW) / 2),
       y: Math.max(12, (h - panelH) / 2),
@@ -119,7 +119,7 @@ export function EntryScanner({ onClose }: { onClose: () => void }) {
       posX: position.x,
       posY: position.y,
     };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try { (e.target as HTMLElement).setPointerCapture(e.pointerId); } catch {}
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -127,7 +127,7 @@ export function EntryScanner({ onClose }: { onClose: () => void }) {
     const dx = e.clientX - dragStartRef.current.x;
     const dy = e.clientY - dragStartRef.current.y;
     const panelW = panelRef.current?.offsetWidth || 400;
-    const panelH = panelRef.current?.offsetHeight || 600;
+    const panelH = panelRef.current?.offsetHeight || 620;
     const maxX = window.innerWidth - panelW - 8;
     const maxY = window.innerHeight - panelH - 8;
     setPosition({
