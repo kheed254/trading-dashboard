@@ -1,251 +1,238 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import BotCard from '../components/BotCard';
-import SpeedBot from './tools/SpeedBot';
-import Diffbot from './tools/Diffbot';
-import Hyperbot from './tools/Hyperbot';
-import MartingaleCalculator from './tools/MartingaleCalculator';
-import Matches from './tools/Matches';
-
-type Bot = {
-  id: string;
-  name: string;
-  premium: boolean;
-  stars: number;
-  description: string;
-  category: 'premium' | 'free' | 'speed' | 'calculator' | 'strategies';
-};
-
-const BOTS: Bot[] = [
-  {
-    id: 'dollarminer',
-    name: 'Dollarminer',
-    premium: true,
-    stars: 5,
-    description:
-      'Dollarminer: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'arctic_v2_pro',
-    name: 'Arctic v2 Pro',
-    premium: true,
-    stars: 5,
-    description:
-      'Arctic v2 Pro: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_atlas',
-    name: 'Pro Atlas',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Atlas: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_nova',
-    name: 'Pro Nova',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Nova: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_orion',
-    name: 'Pro Orion',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Orion: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_vega',
-    name: 'Pro Vega',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Vega: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_titan',
-    name: 'Pro Titan',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Titan: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_zenith',
-    name: 'Pro Zenith',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Zenith: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'pro_apex',
-    name: 'Pro Apex',
-    premium: true,
-    stars: 5,
-    description:
-      'Pro Apex: automated trading with risk management and profit optimization.',
-    category: 'premium',
-  },
-  {
-    id: 'free_rise_fall',
-    name: 'Simple Rise/Fall',
-    premium: false,
-    stars: 4,
-    description:
-      'Free bot that trades Rise/Fall on Volatility 100 (1s) with a basic martingale.',
-    category: 'free',
-  },
-  {
-    id: 'free_even_odd',
-    name: 'Even/Odd Auto',
-    premium: false,
-    stars: 4,
-    description:
-      'Free bot that trades the last digit Even/Odd on Volatility 75 (1s).',
-    category: 'free',
-  },
-  {
-    id: 'free_over_under',
-    name: 'Over/Under 4',
-    premium: false,
-    stars: 5,
-    description:
-      'Free bot trading Digits Over 4 / Under 5 on Volatility 25 (1s).',
-    category: 'free',
-  },
-  {
-    id: 'free_speedbot_1',
-    name: 'SpeedBot Basic',
-    premium: false,
-    stars: 3,
-    description:
-      'Minimal speed bot for fast Rise/Fall entries with tight stop-loss.',
-    category: 'free',
-  },
-];
-
-type TopTab = 'free' | 'speed' | 'calculator' | 'strategies' | 'all';
-
-const TOP_TABS: { id: TopTab; label: string }[] = [
-  { id: 'free', label: 'Free Bots' },
-  { id: 'speed', label: 'SpeedBots 🚀' },
-  { id: 'calculator', label: 'Calculator' },
-  { id: 'strategies', label: 'Strategies' },
-  { id: 'all', label: 'All' },
-];
-
-type SpeedSubTab = 'matches' | 'diffbot' | 'hyperbot' | 'speedbot';
-
-const SPEED_SUB_TABS: { id: SpeedSubTab; label: string }[] = [
-  { id: 'matches', label: 'Matches' },
-  { id: 'diffbot', label: 'Diffbot' },
-  { id: 'hyperbot', label: 'Hyperbot' },
-  { id: 'speedbot', label: 'SpeedBot 🚀' },
-];
+import {
+  getSavedBots,
+  deleteSavedBot,
+  duplicateSavedBot,
+  summarizeBot,
+  formatAgo,
+  type StoredBot,
+} from '../lib/storage';
 
 export default function TradingBots() {
-  const [activeTab, setActiveTab] = useState<TopTab>('all');
-  const [activeSubTab, setActiveSubTab] = useState<SpeedSubTab>('speedbot');
   const navigate = useNavigate();
+  const [bots, setBots] = useState<StoredBot[]>([]);
+  const [search, setSearch] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const filtered =
-    activeTab === 'all'
-      ? BOTS
-      : activeTab === 'speed'
-      ? []
-      : BOTS.filter((b) => b.category === activeTab);
+  /* ---- Load bots on mount ---- */
+  useEffect(() => {
+    setBots(getSavedBots());
+  }, []);
 
-  const handleLoad = (_bot: Bot) => {
+  /* ---- Refresh list from storage ---- */
+  const refresh = () => setBots(getSavedBots());
+
+  /* ---- Filter by search ---- */
+  const filtered = useMemo(() => {
+    if (!search.trim()) return bots;
+    const q = search.toLowerCase();
+    return bots.filter((b) => {
+      const summary = summarizeBot(b.blocks);
+      return (
+        b.name.toLowerCase().includes(q) ||
+        summary.market.toLowerCase().includes(q) ||
+        summary.tradeType.toLowerCase().includes(q)
+      );
+    });
+  }, [bots, search]);
+
+  /* ---- Load a bot into the Bot Builder ---- */
+  const handleLoad = (bot: StoredBot) => {
+    // Save to the "current" bot slot so BotBuilder picks it up
+    try {
+      const payload = { blocks: bot.blocks, savedAt: Date.now() };
+      localStorage.setItem('stingerfx_bot_v1', JSON.stringify(payload));
+    } catch {}
+
+    // Navigate to Bot Builder
     navigate('/bot_builder');
   };
 
+  /* ---- Duplicate ---- */
+  const handleDuplicate = (id: string) => {
+    const copy = duplicateSavedBot(id);
+    if (copy) refresh();
+  };
+
+  /* ---- Delete ---- */
+  const handleDelete = (id: string) => {
+    deleteSavedBot(id);
+    setConfirmDelete(null);
+    refresh();
+  };
+
+  /* ---- Last saved at ---- */
+  const lastSavedAt = bots.length > 0 ? bots[0].savedAt : null;
+
   return (
-    <main className="max-w-7xl mx-auto px-6 py-6">
-      {/* Top tabs */}
-      <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-200 pb-2">
-        {TOP_TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={`px-4 py-2 text-sm rounded-md transition ${
-              activeTab === t.id
-                ? 'bg-blue-50 text-blue-600 font-semibold border border-blue-400'
-                : 'text-gray-600 hover:bg-gray-100 border border-transparent'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+    <main className="min-h-screen bg-gray-50 pb-32">
+      <div className="max-w-3xl mx-auto px-4 py-6">
+
+        {/* ============ HEADER ============ */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-navy mb-1">Trading Bots</h1>
+          <p className="text-sm text-gray-500">
+            {bots.length} saved strateg{bots.length === 1 ? 'y' : 'ies'}
+            {lastSavedAt && ` · last saved ${formatAgo(lastSavedAt)}`}
+          </p>
+        </div>
+
+        {/* ============ SEARCH ============ */}
+        {bots.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="text"
+              placeholder="🔍  Search bots by name, market, or trade type…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white outline-none focus:border-blue-500"
+            />
+          </div>
+        )}
+
+        {/* ============ EMPTY STATE ============ */}
+        {bots.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
+            <div className="text-5xl mb-4">🤖</div>
+            <h2 className="text-lg font-bold text-navy mb-2">No saved bots yet</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Build your first bot in the Bot Builder and it will appear here.
+            </p>
+            <button
+              onClick={() => navigate('/bot_builder')}
+              className="inline-block bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-6 py-3 rounded-lg transition"
+            >
+              Open Bot Builder
+            </button>
+          </div>
+        )}
+
+        {/* ============ SEARCH EMPTY ============ */}
+        {bots.length > 0 && filtered.length === 0 && (
+          <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
+            <div className="text-3xl mb-2">🔍</div>
+            <div className="text-sm text-gray-500">
+              No bots match "<span className="font-semibold text-navy">{search}</span>"
+            </div>
+          </div>
+        )}
+
+        {/* ============ BOT CARDS ============ */}
+        {filtered.length > 0 && (
+          <div className="space-y-3">
+            {filtered.map((bot) => {
+              const summary = summarizeBot(bot.blocks);
+              return (
+                <div
+                  key={bot.id}
+                  className="bg-white border border-gray-200 rounded-2xl p-4 hover:shadow-md transition"
+                >
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-navy text-base truncate">
+                        {bot.name}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        Saved {formatAgo(bot.savedAt)}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <span className="inline-block bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                        {bot.blocks.length} blocks
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Config summary */}
+                  <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 mb-3 space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-20 shrink-0">Market:</span>
+                      <span className="font-medium text-navy truncate">{summary.market}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-20 shrink-0">Trade Type:</span>
+                      <span className="font-medium text-navy truncate">{summary.tradeType}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-20 shrink-0">Contract:</span>
+                      <span className="font-medium text-navy truncate">{summary.contractType}</span>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+                    <button
+                      onClick={() => handleLoad(bot)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg transition"
+                    >
+                      Load into Builder
+                    </button>
+
+                    <button
+                      onClick={() => handleDuplicate(bot.id)}
+                      className="px-3 py-2.5 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg transition"
+                      title="Duplicate bot"
+                    >
+                      📋
+                    </button>
+
+                    <button
+                      onClick={() => setConfirmDelete(bot.id)}
+                      className="px-3 py-2.5 border border-red-300 hover:bg-red-50 text-red-600 text-sm font-medium rounded-lg transition"
+                      title="Delete bot"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ============ FOOTER STATS ============ */}
+        {bots.length > 0 && (
+          <div className="mt-6 text-center text-[11px] text-gray-400">
+            Showing {filtered.length} of {bots.length} bot{bots.length === 1 ? '' : 's'}
+            {search && ` matching "${search}"`}
+          </div>
+        )}
       </div>
 
-      {/* SpeedBots sub-tabs */}
-      {activeTab === 'speed' && (
-        <div className="flex flex-wrap gap-2 mb-6">
-          {SPEED_SUB_TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setActiveSubTab(t.id)}
-              className={`px-3 py-1.5 text-xs rounded-md transition border ${
-                activeSubTab === t.id
-                  ? 'bg-blue-50 text-blue-600 font-semibold border-blue-400'
-                  : 'text-gray-600 hover:bg-gray-100 border-gray-300'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* CONTENT */}
-      {activeTab === 'speed' ? (
-        activeSubTab === 'speedbot' ? (
-          <SpeedBot />
-        ) : activeSubTab === 'diffbot' ? (
-          <Diffbot />
-        ) : activeSubTab === 'hyperbot' ? (
-          <Hyperbot />
-        ) : activeSubTab === 'matches' ? (
-          <Matches />
-        ) : (
-          <div className="text-center text-gray-400 text-sm py-20">
-            <span className="font-semibold text-gray-500">
-              {SPEED_SUB_TABS.find((t) => t.id === activeSubTab)?.label}
-            </span>
-            <br />
-            Coming soon.
+      {/* ============ DELETE CONFIRMATION MODAL ============ */}
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4"
+          onClick={() => setConfirmDelete(null)}
+        >
+          <div
+            className="bg-white rounded-xl max-w-sm w-full p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-3xl mb-3 text-center">🗑</div>
+            <h3 className="text-lg font-bold text-navy text-center mb-2">
+              Delete this bot?
+            </h3>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              This action cannot be undone. The bot will be permanently removed from your library.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="py-2.5 rounded-lg border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                className="py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition"
+              >
+                Delete
+              </button>
+            </div>
           </div>
-        )
-      ) : activeTab === 'calculator' ? (
-        <MartingaleCalculator />
-      ) : filtered.length === 0 ? (
-        <div className="text-center text-gray-400 text-sm py-20">
-          No bots in this category yet.
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-          {filtered.map((bot) => (
-            <BotCard
-              key={bot.id}
-              name={bot.name}
-              premium={bot.premium}
-              stars={bot.stars}
-              description={bot.description}
-              onLoad={() => handleLoad(bot)}
-            />
-          ))}
         </div>
       )}
     </main>

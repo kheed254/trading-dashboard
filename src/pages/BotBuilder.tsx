@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { saveBot, loadBot, formatAgo } from '../lib/storage';
+import { saveBot, loadBot, formatAgo, saveNamedBot, summarizeBot } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
 import { useAuthWs } from '../lib/auth-ws-context';
 import { useBotStatus } from '../lib/bot-status';
@@ -215,7 +215,7 @@ export default function BotBuilder() {
       const purchase = createBlock('purchase');
       purchase.direction = 'Over';
 
-      // Clear the URL params after reading them (so refresh doesn't reapply)
+      // Clear the URL params after reading them
       window.history.replaceState({}, '', '/bot_builder');
 
       return [tp, purchase, createBlock('sell'), createBlock('restart')];
@@ -349,7 +349,30 @@ export default function BotBuilder() {
   const removeBlock = (id: string) => setBlocks((bs) => bs.filter((b) => b.id !== id));
   const toggleBlock = (id: string) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, open: !b.open } : b)));
   const updateBlock = (id: string, patch: Partial<Block>) => setBlocks((bs) => bs.map((b) => (b.id === id ? { ...b, ...patch } : b)));
-  const handleSave = () => { saveBot(blocks as any); setLastSavedAt(Date.now()); setSavedFlash(true); setTimeout(() => setSavedFlash(false), 800); };
+
+  const handleSave = () => {
+    // Legacy save (for auto-load on next visit)
+    saveBot(blocks as any);
+
+    // Also save to the multi-bot library with a derived name
+    try {
+      const summary = summarizeBot(blocks as any);
+      const defaultName = `${summary.market.replace(' Index', '')} ${summary.tradeType.split(' › ').pop()}`.trim() || 'Untitled Bot';
+      const name = prompt('Save bot as:', defaultName);
+      if (name && name.trim()) {
+        saveNamedBot(name.trim(), blocks as any);
+        console.log('[BotBuilder] Saved to library as:', name);
+        addJournal(`Saved to library: "${name.trim()}"`, 'info');
+      }
+    } catch (err) {
+      console.warn('[BotBuilder] Library save failed:', err);
+    }
+
+    setLastSavedAt(Date.now());
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 800);
+  };
+
   const handleLoad = () => { const saved = loadBot(); if (!saved || saved.blocks.length === 0) { alert('No saved bot found.'); return; } setBlocks(saved.blocks as Block[]); setLastSavedAt(saved.savedAt); };
 
   const handleReset = () => {
