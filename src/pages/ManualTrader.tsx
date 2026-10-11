@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDigitStream } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws-context';
@@ -32,6 +32,8 @@ const TRADE_TYPE_LABELS: Record<TradeTypeKey, string> = {
   touchnotouch: 'Touch/No Touch',
 };
 
+type JournalEntry = { time: string; text: string; kind: string };
+
 export default function ManualTrader() {
   const [marketName, setMarketName] = useState('Volatility 100 Index');
   const [tradeType, setTradeType] = useState<TradeTypeKey>('evenodd');
@@ -39,13 +41,25 @@ export default function ManualTrader() {
   const [showTypePicker, setShowTypePicker] = useState(false);
   const [isTrading, setIsTrading] = useState(false);
 
-  // Take Profit state
+  // Take Profit / Stop Loss
   const [takeProfitEnabled, setTakeProfitEnabled] = useState(false);
   const [takeProfitTarget, setTakeProfitTarget] = useState(50);
-  const [takeProfitReached, setTakeProfitReached] = useState(false);
-  const [sessionPL, setSessionPL] = useState(0);
+  const [stopLossEnabled, setStopLossEnabled] = useState(false);
+  const [stopLossTarget, setStopLossTarget] = useState(50);
+  const [targetReached, setTargetReached] = useState<'tp' | 'sl' | null>(null);
 
-  // Live payouts from Deriv
+  // Session
+  const [sessionPL, setSessionPL] = useState(0);
+  const [journal, setJournal] = useState<JournalEntry[]>([]);
+  const [showJournal, setShowJournal] = useState(false);
+
+  // Auto-Trade
+  const [autoTrade, setAutoTrade] = useState(false);
+  const [autoDirection, setAutoDirection] = useState<'primary' | 'secondary'>('primary');
+  const [autoDelay, setAutoDelay] = useState(3); // seconds between trades
+  const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Live payouts
   const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
   const [secondaryPayout, setSecondaryPayout] = useState<number | null>(null);
 
@@ -61,6 +75,10 @@ export default function ManualTrader() {
 
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
+
+  /* ---- Journal helper ---- */
+  const addJournal = (text: string, kind = 'info') =>
+    setJournal((prev) => [{ time: new Date().toLocaleTimeString(), text, kind }, ...prev].slice(0, 100));
 
   /* ---- Resolve contract types ---- */
   const getContractTypes = () => {
@@ -107,34 +125,50 @@ export default function ManualTrader() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized, symbol, tradeType, selectedDigit, stake]);
 
-  /* ---- Track settled trades for Take Profit ---- */
-  const trackedContractIds = useMemo(() => new Set<number>(), []);
+  /* ---- Track settled trades for TP/SL ---- */
+  const trackedContractIds = useRef(new Set<number>());
+
   useEffect(() => {
-    if (!takeProfitEnabled) return;
-
     openTrades.forEach((t) => {
-      if (t.is_sold && !trackedContractIds.has(t.contract_id)) {
-        trackedContractIds.add(t.contract_id);
-        const newPL = sessionPL + t.profit;
-        setSessionPL(newPL);
+      if (t.is_sold && !trackedContractIds.current.has(t.contract_id)) {
+        trackedContractIds.current.add(t.contract_id);
 
-        if (takeProfitEnabled && newPL >= takeProfitTarget) {
-          setTakeProfitReached(true);
-        }
+        // Update session P/L
+        setSessionPL((prev) => {
+          const newPL = +(prev + t.profit).toFixed(2);
+          addJournal(
+            `${t.profit > 0 ? '✓ Won' : '✗ Lost'} ${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)} — Session P/L: $${newPL.toFixed(2)}`,
+            t.profit > 0 ? 'profit' : 'loss'
+          );
+
+          // Take Profit check
+          if (takeProfitEnabled && newPL >= takeProfitTarget && !targetReached) {
+            setTargetReached('tp');
+            setAutoTrade(false);
+            addJournal(`🎯 Take Profit hit (+$${newPL.toFixed(2)}) — stopped`, 'profit');
+          }
+
+          // Stop Loss check
+          if (stopLossEnabled && newPL <= -stopLossTarget && !targetReached) {
+            setTargetReached('sl');
+            setAutoTrade(false);
+            addJournal(`🛑 Stop Loss hit ($${newPL.toFixed(2)}) — stopped`, 'loss');
+          }
+
+          return newPL;
+        });
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTrades, takeProfitEnabled, takeProfitTarget]);
+  }, [openTrades, takeProfitEnabled, takeProfitTarget, stopLossEnabled, stopLossTarget, targetReached]);
 
-  /* ---- Reset take profit when enabled changes ---- */
-  useEffect(() => {
-    if (takeProfitEnabled) {
-      setSessionPL(0);
-      setTakeProfitReached(false);
-      trackedContractIds.clear();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [takeProfitEnabled]);
+  /* ---- Reset session when both toggles off ---- */
+  const resetSession = () => {
+    setSessionPL(0);
+    setTargetReached(null);
+    trackedContractIds.current.clear();
+    addJournal('Session reset', 'info');
+  };
 
   /* ---- Stake controls ---- */
   const adjustStake = (delta: number) => {
@@ -148,8 +182,8 @@ export default function ManualTrader() {
       return;
     }
 
-    if (takeProfitReached) {
-      alert('Take profit already reached. Uncheck "Take profit" or reset to continue trading.');
+    if (targetReached) {
+      alert(`Already stopped by ${targetReached === 'tp' ? 'Take Profit' : 'Stop Loss'}. Reset session to continue.`);
       return;
     }
 
@@ -171,13 +205,47 @@ export default function ManualTrader() {
         durationUnit,
         barrier,
       });
-      console.log(`[Manual Trader] Placed ${contractType}`, { symbol, stake, barrier });
+      addJournal(`Placing ${contractType} — $${stake.toFixed(2)}`, 'buy');
     } catch (error) {
       console.error('Manual Trader error:', error);
+      addJournal(`Error: ${String(error)}`, 'loss');
     } finally {
       setIsTrading(false);
     }
   };
+
+  /* ---- Auto-Trade loop ---- */
+  useEffect(() => {
+    if (!autoTrade || targetReached || !authorized) {
+      if (autoTimerRef.current) {
+        clearTimeout(autoTimerRef.current);
+        autoTimerRef.current = null;
+      }
+      return;
+    }
+
+    const run = async () => {
+      if (!autoTrade || targetReached || isTrading) return;
+      await handleTrade(autoDirection);
+      autoTimerRef.current = setTimeout(run, autoDelay * 1000);
+    };
+
+    addJournal(`Auto-Trade ON — every ${autoDelay}s on ${autoDirection}`, 'info');
+    autoTimerRef.current = setTimeout(run, autoDelay * 1000);
+
+    return () => {
+      if (autoTimerRef.current) clearTimeout(autoTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTrade, autoDirection, autoDelay, targetReached, authorized]);
+
+  /* ---- Auto-Trade OFF notification ---- */
+  useEffect(() => {
+    if (!autoTrade && journal.length > 0 && journal[0].text.startsWith('Auto-Trade ON')) {
+      addJournal('Auto-Trade OFF', 'info');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTrade]);
 
   /* ---- Button labels ---- */
   const primaryLabel =
@@ -194,11 +262,11 @@ export default function ManualTrader() {
     tradeType === 'callput' ? 'Fall' :
     tradeType === 'higherlower' ? 'Lower' : 'No Touch';
 
-  const buttonsDisabled = isTrading || !authorized || takeProfitReached;
+  const buttonsDisabled = isTrading || !authorized || !!targetReached || autoTrade;
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0e27] overflow-hidden">
-      {/* ============ TOP: MARKET SELECTOR ============ */}
+      {/* ============ TOP: MARKET SELECTOR + SESSION P/L ============ */}
       <div className="px-4 py-3 border-b border-white/5 bg-[#141832]">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center">
@@ -219,6 +287,22 @@ export default function ManualTrader() {
               <span className="text-gray-500">live</span>
             </div>
           </div>
+
+          {/* Session P/L badge */}
+          <div className={`px-3 py-1.5 rounded-lg border ${
+            sessionPL > 0 ? 'bg-green-500/10 border-green-500/30' :
+            sessionPL < 0 ? 'bg-red-500/10 border-red-500/30' :
+            'bg-white/5 border-white/10'
+          }`}>
+            <div className="text-[9px] text-gray-400 uppercase tracking-wider text-center">Session</div>
+            <div className={`text-sm font-bold font-mono text-center ${
+              sessionPL > 0 ? 'text-green-400' :
+              sessionPL < 0 ? 'text-red-400' :
+              'text-gray-400'
+            }`}>
+              {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -236,12 +320,11 @@ export default function ManualTrader() {
             ))}
           </div>
         </div>
-        <button className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">‹</button>
-        <button className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 text-2xl">›</button>
       </div>
 
       {/* ============ BOTTOM: TRADE TICKET ============ */}
-      <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6">
+      <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6 max-h-[60vh] overflow-y-auto">
+
         {/* Trade type + Digit */}
         <div className="flex items-center gap-2 mb-4">
           <button
@@ -276,7 +359,7 @@ export default function ManualTrader() {
           )}
         </div>
 
-        {/* Stake input */}
+        {/* Stake */}
         <div className="flex items-center gap-2 mb-4">
           <button
             onClick={() => adjustStake(-1)}
@@ -303,7 +386,7 @@ export default function ManualTrader() {
           </button>
         </div>
 
-        {/* Quick stake chips */}
+        {/* Quick chips */}
         <div className="flex gap-1 mb-4">
           {[1, 5, 10, 25, 50].map((amount) => (
             <button
@@ -320,80 +403,154 @@ export default function ManualTrader() {
           ))}
         </div>
 
-        {/* Take Profit */}
+        {/* TP/SL Row */}
         <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
-          <label className="flex items-center gap-2 cursor-pointer mb-2">
+          <div className="grid grid-cols-2 gap-3">
+            {/* Take Profit */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={takeProfitEnabled}
+                  onChange={(e) => { setTakeProfitEnabled(e.target.checked); if (!e.target.checked && !stopLossEnabled) resetSession(); }}
+                  className="w-4 h-4 accent-teal-500"
+                />
+                <span className="text-xs text-white font-medium">Take Profit</span>
+                {targetReached === 'tp' && (
+                  <span className="ml-auto text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full">🎯</span>
+                )}
+              </label>
+              {takeProfitEnabled && (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="1"
+                    value={takeProfitTarget}
+                    onChange={(e) => setTakeProfitTarget(Math.max(1, Number(e.target.value) || 1))}
+                    className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
+                  />
+                  <span className="text-[10px] text-gray-400">USD</span>
+                </div>
+              )}
+            </div>
+
+            {/* Stop Loss */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer mb-2">
+                <input
+                  type="checkbox"
+                  checked={stopLossEnabled}
+                  onChange={(e) => { setStopLossEnabled(e.target.checked); if (!e.target.checked && !takeProfitEnabled) resetSession(); }}
+                  className="w-4 h-4 accent-red-500"
+                />
+                <span className="text-xs text-white font-medium">Stop Loss</span>
+                {targetReached === 'sl' && (
+                  <span className="ml-auto text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">🛑</span>
+                )}
+              </label>
+              {stopLossEnabled && (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="1"
+                    value={stopLossTarget}
+                    onChange={(e) => setStopLossTarget(Math.max(1, Number(e.target.value) || 1))}
+                    className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
+                  />
+                  <span className="text-[10px] text-gray-400">USD</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Session row */}
+          {(takeProfitEnabled || stopLossEnabled) && (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+              <span className="text-[10px] text-gray-500">Session P/L:</span>
+              <span className={`text-xs font-bold ${sessionPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)} USD
+              </span>
+              {targetReached && (
+                <button
+                  onClick={resetSession}
+                  className="text-[10px] bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Auto-Trade Row */}
+        <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
+          <label className="flex items-center gap-2 cursor-pointer mb-3">
             <input
               type="checkbox"
-              checked={takeProfitEnabled}
-              onChange={(e) => setTakeProfitEnabled(e.target.checked)}
-              className="w-4 h-4 accent-teal-500"
+              checked={autoTrade}
+              onChange={(e) => setAutoTrade(e.target.checked)}
+              disabled={!!targetReached}
+              className="w-4 h-4 accent-blue-500"
             />
-            <span className="text-sm text-white font-medium">Take profit</span>
-            {takeProfitReached && (
-              <span className="ml-auto text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">🎯 Hit!</span>
+            <span className="text-xs text-white font-medium">Auto-Trade</span>
+            {autoTrade && (
+              <span className="ml-auto text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full animate-pulse">
+                ● Running
+              </span>
             )}
           </label>
 
-          {takeProfitEnabled && (
+          {autoTrade && (
             <>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] text-gray-400 w-16">Side:</span>
+                <button
+                  onClick={() => setAutoDirection('primary')}
+                  className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                    autoDirection === 'primary' ? 'bg-teal-500 text-white' : 'bg-[#141832] text-gray-400'
+                  }`}
+                >
+                  {primaryLabel}
+                </button>
+                <button
+                  onClick={() => setAutoDirection('secondary')}
+                  className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                    autoDirection === 'secondary' ? 'bg-red-500 text-white' : 'bg-[#141832] text-gray-400'
+                  }`}
+                >
+                  {secondaryLabel}
+                </button>
+              </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-400">Stop when profit reaches:</span>
+                <span className="text-[10px] text-gray-400 w-16">Every:</span>
                 <input
                   type="number"
-                  step="1"
                   min="1"
-                  value={takeProfitTarget}
-                  onChange={(e) => setTakeProfitTarget(Math.max(1, Number(e.target.value) || 1))}
-                  className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1.5 text-white font-bold text-sm text-center outline-none"
+                  max="60"
+                  value={autoDelay}
+                  onChange={(e) => setAutoDelay(Math.max(1, Math.min(60, Number(e.target.value) || 3)))}
+                  className="w-16 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
                 />
-                <span className="text-xs text-gray-400">USD</span>
+                <span className="text-[10px] text-gray-400">seconds</span>
               </div>
-
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
-                <span className="text-xs text-gray-500">Session P/L:</span>
-                <span className={`text-sm font-bold ${sessionPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)} USD
-                </span>
-              </div>
-
-              {sessionPL > 0 && (
-                <div className="mt-2">
-                  <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-teal-500 transition-all"
-                      style={{ width: `${Math.min(100, (sessionPL / takeProfitTarget) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
 
-        {/* Risk disclaimer row */}
-        <div className="flex items-center justify-between px-4 py-2 bg-[#0a0e27] border border-white/10 rounded-lg mb-4">
-          <span className="text-xs text-yellow-500 font-medium">Risk Disclaimer</span>
-          <span className="text-xs text-gray-500">Max payout: {((primaryPayout || 0)).toFixed(2)} USD</span>
-        </div>
-
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 mb-3">
           <button
             onClick={() => handleTrade('primary')}
             disabled={buttonsDisabled}
             className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
           >
             <div className="bg-teal-500 text-white py-4 flex items-center justify-center gap-2">
-              <span className="text-lg">
-                {tradeType === 'matchesdiffers' ? '❄️' : tradeType === 'overunder' ? '📈' : '🎲'}
-              </span>
               <span className="font-bold text-lg">{primaryLabel}</span>
             </div>
             <div className="bg-teal-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
               <span>Payout</span>
               <span className="font-bold">
-                {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
+                {primaryPayout !== null ? `${primaryPayout.toFixed(2)}` : '...'}
               </span>
             </div>
           </button>
@@ -404,23 +561,60 @@ export default function ManualTrader() {
             className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
           >
             <div className="bg-red-500 text-white py-4 flex items-center justify-center gap-2">
-              <span className="text-lg">
-                {tradeType === 'matchesdiffers' ? '❄️' : tradeType === 'overunder' ? '📉' : '🎲'}
-              </span>
               <span className="font-bold text-lg">{secondaryLabel}</span>
             </div>
             <div className="bg-red-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
               <span>Payout</span>
               <span className="font-bold">
-                {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
+                {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)}` : '...'}
               </span>
             </div>
           </button>
         </div>
 
-        {takeProfitReached && (
-          <div className="mt-3 bg-green-500/10 border border-green-500/30 rounded-lg p-3 text-center">
-            <span className="text-xs text-green-400 font-medium">🎯 Take profit target reached. Uncheck to continue trading.</span>
+        {/* Target reached banner */}
+        {targetReached && (
+          <div className={`rounded-lg p-3 text-center mb-3 ${
+            targetReached === 'tp' ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
+          }`}>
+            <span className={`text-xs font-medium ${
+              targetReached === 'tp' ? 'text-green-400' : 'text-red-400'
+            }`}>
+              {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
+            </span>
+          </div>
+        )}
+
+        {/* Journal Toggle */}
+        <button
+          onClick={() => setShowJournal(!showJournal)}
+          className="w-full text-xs py-2 text-gray-400 hover:text-white border border-white/10 rounded-lg transition"
+        >
+          {showJournal ? '▲ Hide Journal' : `▼ Show Journal (${journal.length})`}
+        </button>
+
+        {/* Journal Panel */}
+        {showJournal && (
+          <div className="mt-3 max-h-48 overflow-y-auto bg-[#0a0e27] border border-white/10 rounded-lg p-3">
+            {journal.length === 0 ? (
+              <div className="text-center text-gray-500 text-xs py-4">Journal empty</div>
+            ) : (
+              journal.map((j, i) => (
+                <div key={i} className="border-b border-white/5 py-1.5 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-gray-500 font-mono">{j.time}</span>
+                    <span className={`text-[11px] ${
+                      j.kind === 'profit' ? 'text-green-400' :
+                      j.kind === 'loss' ? 'text-red-400' :
+                      j.kind === 'buy' ? 'text-blue-400' :
+                      'text-gray-400'
+                    }`}>
+                      {j.text}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
