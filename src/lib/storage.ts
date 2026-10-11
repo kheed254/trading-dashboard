@@ -14,7 +14,7 @@ export type SavedBlock = {
   durationType?: string;
   durationValue?: number;
   stakeType?: string;
-  direction?: 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs';
+  direction?: 'Rise' | 'Fall' | 'Even' | 'Odd' | 'Over' | 'Under' | 'Matches' | 'Differs' | 'Higher' | 'Lower' | 'Touch' | 'No Touch';
 };
 
 export type SavedBot = {
@@ -22,7 +22,6 @@ export type SavedBot = {
   savedAt: number;
 };
 
-/* ---------- Multi-bot storage ---------- */
 export type StoredBot = {
   id: string;
   name: string;
@@ -40,15 +39,6 @@ export function saveBot(blocks: SavedBlock[]): void {
   try {
     const payload: SavedBot = { blocks, savedAt: Date.now() };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-
-    // Also append/update in the multi-bot library
-    const existing = getSavedBots();
-    const current = existing[0]; // most recent
-    // Only auto-append if the blocks are meaningfully different
-    const isDuplicate = current && JSON.stringify(current.blocks) === JSON.stringify(blocks);
-    if (!isDuplicate) {
-      // We don't auto-name on legacy saveBot; the Trading Bots page handles naming
-    }
   } catch (err) {
     console.warn('[StingerFX] saveBot failed:', err);
   }
@@ -71,7 +61,6 @@ export function loadBot(): SavedBot | null {
    MULTI-BOT LIBRARY
    ================================================================ */
 
-/* ---- Get all saved bots (newest first) ---- */
 export function getSavedBots(): StoredBot[] {
   try {
     const raw = localStorage.getItem(MULTI_BOTS_KEY);
@@ -85,7 +74,6 @@ export function getSavedBots(): StoredBot[] {
   }
 }
 
-/* ---- Save a named bot to the library ---- */
 export function saveNamedBot(name: string, blocks: SavedBlock[]): StoredBot {
   const bots = getSavedBots();
   const newBot: StoredBot = {
@@ -95,7 +83,6 @@ export function saveNamedBot(name: string, blocks: SavedBlock[]): StoredBot {
     savedAt: Date.now(),
   };
   bots.unshift(newBot);
-  // Cap at 50 bots to avoid bloating storage
   const capped = bots.slice(0, 50);
   try {
     localStorage.setItem(MULTI_BOTS_KEY, JSON.stringify(capped));
@@ -105,7 +92,6 @@ export function saveNamedBot(name: string, blocks: SavedBlock[]): StoredBot {
   return newBot;
 }
 
-/* ---- Update an existing bot by id ---- */
 export function updateSavedBot(id: string, patch: Partial<StoredBot>): void {
   const bots = getSavedBots();
   const idx = bots.findIndex((b) => b.id === id);
@@ -118,7 +104,6 @@ export function updateSavedBot(id: string, patch: Partial<StoredBot>): void {
   }
 }
 
-/* ---- Delete a bot by id ---- */
 export function deleteSavedBot(id: string): void {
   const bots = getSavedBots().filter((b) => b.id !== id);
   try {
@@ -128,7 +113,6 @@ export function deleteSavedBot(id: string): void {
   }
 }
 
-/* ---- Duplicate a bot by id ---- */
 export function duplicateSavedBot(id: string): StoredBot | null {
   const bots = getSavedBots();
   const original = bots.find((b) => b.id === id);
@@ -151,7 +135,6 @@ export function duplicateSavedBot(id: string): StoredBot | null {
   return copy;
 }
 
-/* ---- Get the "name" of a bot (derived from its config) ---- */
 export function deriveBotName(blocks: SavedBlock[]): string {
   const tp = blocks.find((b) => b.type === 'trade_params');
   if (!tp) return 'Untitled Bot';
@@ -160,7 +143,6 @@ export function deriveBotName(blocks: SavedBlock[]): string {
   return `${market} ${tradeType}`.trim();
 }
 
-/* ---- Get the market/trade type summary from blocks ---- */
 export function summarizeBot(blocks: SavedBlock[]): { market: string; tradeType: string; contractType: string } {
   const tp = blocks.find((b) => b.type === 'trade_params');
   return {
