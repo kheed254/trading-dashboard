@@ -48,7 +48,10 @@ function fetchTicks(symbol: string, count: number): Promise<number[]> {
           ws.send(JSON.stringify({ forget_all: 'ticks' }));
         }
       } catch {}
-      try { ws.close(); } catch {}
+      // Small delay before closing to let Deriv release the connection cleanly
+      setTimeout(() => {
+        try { ws.close(); } catch {}
+      }, 200);
     };
 
     const timer = setTimeout(() => {
@@ -57,7 +60,6 @@ function fetchTicks(symbol: string, count: number): Promise<number[]> {
     }, 15000);
 
     ws.onopen = () => {
-      // The newer Deriv API expects the same ticks_history message format
       ws.send(
         JSON.stringify({
           ticks_history: symbol,
@@ -128,8 +130,8 @@ function computeStats(digits: number[], mode: ScanMode): Omit<MarketResult, 'mar
   }
 
   // Over/Under stats (based on mode)
-  const isOver = (d: number) => d > mode.over;   // strict over
-  const isUnder = (d: number) => d < mode.under; // strict under
+  const isOver = (d: number) => d > mode.over;
+  const isUnder = (d: number) => d < mode.under;
 
   const overCount = digits.filter(isOver).length;
   const underCount = digits.filter(isUnder).length;
@@ -187,6 +189,11 @@ export async function scanMarkets(
   for (let i = 0; i < markets.length; i++) {
     const m = markets[i];
     onProgress({ index: i + 1, total: markets.length, currentMarket: m.name });
+
+    // Delay before each scan (except the first one) to avoid rate limiting
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
 
     try {
       const digits = await fetchTicks(m.symbol, ticksPerMarket);
