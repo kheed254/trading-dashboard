@@ -4,6 +4,7 @@ import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
 import { useAuthWs } from '../lib/auth-ws-context';
 import { useBotStatus } from '../lib/bot-status';
+import { EntryScanner } from './EntryScanner';
 
 /* ---------- Icons ---------- */
 const IconDashboard = () => (
@@ -134,10 +135,8 @@ export default function Layout() {
 
   const handleDockRun = () => {
     if (location.pathname === '/bot_builder') {
-      // Already on Bot Builder — dispatch the run/stop event directly
       window.dispatchEvent(new CustomEvent('sfx-toggle-run'));
     } else {
-      // Navigate to Bot Builder; user taps Run there
       navigate('/bot_builder');
     }
   };
@@ -292,7 +291,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* FIXED: Navigation bar is now visible on ALL screens and horizontally scrollable */}
         <nav className="bg-navy border-t border-white/5 pointer-events-auto overflow-x-auto tab-scroll">
           <div className="flex items-center gap-0.5 text-[13px] px-2 min-w-max">
             {navItems.map((item) => (
@@ -325,7 +323,7 @@ export default function Layout() {
         <Outlet />
       </div>
 
-      {/* ===== BOTTOM DOCK (mobile) — always visible ===== */}
+      {/* ===== BOTTOM DOCK (mobile) ===== */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
         <div className="flex items-center gap-2 px-3 py-2">
           <button
@@ -364,6 +362,31 @@ export default function Layout() {
           </button>
         </div>
       </div>
+
+      {/* ===== GLOBAL AI BUTTON + ENTRY SCANNER ===== */}
+      <GlobalAiButton />
     </div>
+  );
+}
+
+/* ================================================================
+   GLOBAL AI BUTTON + ENTRY SCANNER
+   - Shows on every page
+   - Opens the draggable EntryScanner panel
+   ================================================================ */
+function GlobalAiButton() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform"
+        aria-label="Open Entry Scanner"
+      >
+        AI
+      </button>
+      {open && <EntryScanner onClose={() => setOpen(false)} />}
+    </>
   );
 }
