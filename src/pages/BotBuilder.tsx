@@ -533,12 +533,6 @@ export default function BotBuilder() {
           {blocks.map((b, i) => (
             <BlockRenderer key={b.id} block={b} index={i + 1} onToggle={() => toggleBlock(b.id)} onDelete={() => removeBlock(b.id)} onUpdate={(patch) => updateBlock(b.id, patch)} />
           ))}
-
-          {!mobileReportOpen && (
-            <button className="absolute bottom-6 right-6 w-14 h-14 md:w-16 md:h-16 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold md:text-lg shadow-lg flex items-center justify-center z-10">
-              AI
-            </button>
-          )}
         </div>
       </main>
 
