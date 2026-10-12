@@ -134,7 +134,9 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
   const tokenRef = useRef<string | null>(null);
   const accountsRef = useRef<DerivAccount[]>([]);
   const proposalWaitersRef = useRef<Record<number, (data: any) => void>>({});
-  const proposalIdCounterRef = useRef(9000);
+  // FIX #2: moved counter from 9000 -> 10000 to avoid any overlap with
+  // other req_id ranges (buy = propReqId + 1000).
+  const proposalIdCounterRef = useRef(10000);
 
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const accountIdRef = useRef<string | null>(null);
@@ -176,7 +178,7 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
         let data: any;
         try { data = JSON.parse(event.data); } catch { return; }
 
-        // FIX: Ignore stale balance during account switch
+        // Ignore stale balance during account switch
         if (data.msg_type === 'balance' && data.balance) {
           if (isSwitchingRef.current) {
             console.log('[StingerFX] Ignoring stale balance update during switch');
@@ -190,12 +192,15 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
           } : prev);
         }
 
+        // Route proposal responses to their waiter (placeTrade)
         if (data.msg_type === 'proposal' && data.req_id) {
           const waiter = proposalWaitersRef.current[data.req_id];
           if (waiter) { waiter(data); delete proposalWaitersRef.current[data.req_id]; }
         }
 
-        if (data.msg_type === 'proposal' && data.req_id && data.req_id >= 12000) {
+        // Route subscribed proposal responses (subscribeProposal)
+        // FIX #3: use the callbacks map instead of a numeric range check.
+        if (data.msg_type === 'proposal' && data.req_id && proposalSubCallbacksRef.current[data.req_id]) {
           if (data.error) {
             console.warn('[StingerFX] Proposal sub error:', data.error.message);
             return;
@@ -210,6 +215,7 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Buy responses
         if (data.msg_type === 'buy' && data.req_id && data.req_id >= 9000) {
           if (data.error) { console.warn('[StingerFX] Buy error:', data.error); return; }
           const b = data.buy;
@@ -373,7 +379,8 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       return;
     }
     const propReqId = ++proposalIdCounterRef.current;
-    const buyReqId = propReqId + 100;
+    // FIX #2: use +1000 instead of +100 so proposal and buy ranges never overlap
+    const buyReqId = propReqId + 1000;
 
     const proposalReq: Record<string, any> = {
       proposal: 1,
@@ -401,11 +408,19 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
         return;
       }
       console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
-      ws.send(JSON.stringify({
+
+      // FIX #1: include barrier on the buy request for digit contracts.
+      // Deriv rejects buys for DIGITOVER / DIGITUNDER / DIGITMATCH / DIGITDIFF
+      // if the barrier is not echoed back alongside the proposal id.
+      const buyReq: Record<string, any> = {
         buy: prop.id,
         price: Number(prop.ask_price),
         req_id: buyReqId,
-      }));
+      };
+      if (input.barrier) buyReq.barrier = input.barrier;
+
+      console.log('[StingerFX] Sending buy:', buyReq);
+      ws.send(JSON.stringify(buyReq));
     };
 
     ws.send(JSON.stringify(proposalReq));
