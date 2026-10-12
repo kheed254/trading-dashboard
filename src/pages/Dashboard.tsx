@@ -134,12 +134,13 @@ export default function Dashboard() {
       {/* ============ TOP: ACCOUNT SUMMARY ============ */}
       <section className="bg-gradient-to-br from-[#0b1c3f] via-[#12295a] to-[#0b3d91] text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          {/* POLISH #7: Cleaner greeting */}
           <div className="mb-6">
             <h1 className="text-2xl md:text-3xl font-bold">
-              Welcome back{user?.loginid ? `, ${user.loginid}` : ''} 👋
+              Welcome back{user?.loginid ? ', Trader' : ''} 👋
             </h1>
             <p className="text-white/70 text-sm mt-1">
-              Here's your trading overview
+              {user?.isVirtual ? 'Demo' : 'Real'} account · {user?.loginid || 'Not logged in'}
             </p>
           </div>
 
