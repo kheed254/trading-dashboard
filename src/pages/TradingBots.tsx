@@ -149,26 +149,24 @@ export default function TradingBots() {
         {/* ============ SUB-TAB CONTENT ============ */}
         {subTab === 'free' && (
           <>
-            {/* Premade bots grid */}
+            {/* Premade bots grid — POLISH #4 APPLIED */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {PREMADE_BOTS.map((bot) => (
                 <div
                   key={bot.id}
                   className="bg-white border border-gray-200 rounded-2xl overflow-hidden hover:shadow-lg transition flex flex-col"
                 >
-                  {/* PREMIUM badge */}
-                  <div className="flex justify-end pt-3 pr-3">
+                  {/* Icon + name + PREMIUM badge on one row */}
+                  <div className="px-4 pt-4 pb-2 flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-2xl flex-shrink-0">{bot.icon}</span>
+                      <h3 className="text-base font-bold text-navy truncate">{bot.name}</h3>
+                    </div>
                     {bot.isPremium && (
-                      <span className="bg-yellow-400 text-navy text-[10px] font-bold px-2.5 py-1 rounded">
+                      <span className="flex-shrink-0 bg-yellow-400 text-navy text-[9px] font-bold px-2 py-1 rounded mt-0.5">
                         PREMIUM
                       </span>
                     )}
-                  </div>
-
-                  {/* Icon + name */}
-                  <div className="px-4 pb-2 flex items-center gap-2">
-                    <span className="text-2xl">{bot.icon}</span>
-                    <h3 className="text-base font-bold text-navy truncate">{bot.name}</h3>
                   </div>
 
                   {/* Stars */}
