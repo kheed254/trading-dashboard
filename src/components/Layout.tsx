@@ -292,9 +292,9 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* ============ BOTTOM NAV BAR (matches Deriv Analyser) ============ */}
+        {/* ============ BOTTOM NAV BAR (POLISH #1 APPLIED) ============ */}
         <nav className="bg-[#0f2748] border-t border-white/5 overflow-x-auto tab-scroll">
-          <div className="max-w-[1600px] mx-auto flex items-center gap-0 text-[13px] px-2">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-0 text-[13px] px-0">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -315,9 +315,10 @@ export default function Layout() {
           </div>
         </nav>
 
+        {/* POLISH #1: scroll-padding-left fix */}
         <style>{`
           .tab-scroll::-webkit-scrollbar { display: none; }
-          .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+          .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; scroll-padding-left: 0; }
         `}</style>
       </header>
 
