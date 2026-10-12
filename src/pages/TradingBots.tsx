@@ -149,7 +149,7 @@ export default function TradingBots() {
         {/* ============ SUB-TAB CONTENT ============ */}
         {subTab === 'free' && (
           <>
-            {/* Premade bots grid — POLISH #4 APPLIED */}
+            {/* Premade bots grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               {PREMADE_BOTS.map((bot) => (
                 <div
@@ -272,6 +272,9 @@ export default function TradingBots() {
                   {filtered.map((bot) => {
                     const summary = summarizeBot(bot.blocks);
                     const isImported = bot.name.toLowerCase().startsWith('imported') || bot.name.includes('Imported');
+                    const shortTradeType = summary.tradeType.split(' › ').pop() || '';
+                    const showContractBadge = summary.contractType && summary.contractType !== 'Both' && summary.contractType !== '—';
+
                     return (
                       <div
                         key={bot.id}
@@ -279,7 +282,7 @@ export default function TradingBots() {
                       >
                         <div className="flex items-start justify-between gap-3 mb-3">
                           <div className="min-w-0 flex-1">
-                            <div className="font-semibold text-navy text-base truncate flex items-center gap-2">
+                            <div className="font-semibold text-navy text-base truncate flex items-center gap-2 flex-wrap">
                               {bot.name}
                               {isImported && (
                                 <span className="text-[9px] bg-amber-100 text-amber-700 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
@@ -296,6 +299,20 @@ export default function TradingBots() {
                               {bot.blocks.length} blocks
                             </span>
                           </div>
+                        </div>
+
+                        {/* POLISH #10: Trade type + contract type badges */}
+                        <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+                          {shortTradeType && (
+                            <span className="inline-block bg-purple-50 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded">
+                              {shortTradeType}
+                            </span>
+                          )}
+                          {showContractBadge && (
+                            <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-semibold px-2 py-0.5 rounded">
+                              {summary.contractType}
+                            </span>
+                          )}
                         </div>
 
                         <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 mb-3 space-y-1">
