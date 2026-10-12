@@ -120,6 +120,17 @@ async function fetchOtpUrl(token: string, accountId: string): Promise<string> {
   return url;
 }
 
+/* Detach all handlers from a socket, then close it.
+   This stops the old socket from triggering a reconnect. */
+function detachAndClose(ws: WebSocket | null) {
+  if (!ws) return;
+  ws.onopen = null;
+  ws.onmessage = null;
+  ws.onerror = null;
+  ws.onclose = null;
+  try { ws.close(); } catch {}
+}
+
 /* ---------- Context ---------- */
 const AuthWsContext = createContext<AuthWsState | null>(null);
 
@@ -158,7 +169,10 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
 
     try {
       setError(null);
-      try { wsRef.current?.close(); } catch {}
+
+      // FIX 1: detach handlers before closing so the old socket cannot trigger a reconnect
+      detachAndClose(wsRef.current);
+      wsRef.current = null;
 
       const otpUrl = await fetchOtpUrl(token, accountId);
       const ws = new WebSocket(otpUrl);
@@ -263,6 +277,9 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       ws.onerror = () => setError('WebSocket error — check your connection.');
 
       ws.onclose = () => {
+        // FIX 2: ignore close events from old sockets
+        if (wsRef.current !== ws) return;
+
         console.log('[StingerFX] WebSocket closed');
         isConnectingRef.current = false;
 
@@ -320,8 +337,10 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-      try { wsRef.current?.close(); } catch {}
+      // FIX 3: detach handlers on cleanup too
+      detachAndClose(wsRef.current);
       wsRef.current = null;
+      isConnectingRef.current = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -372,58 +391,32 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Force barrier to be a string
     const barrierValue =
       input.barrier !== undefined && input.barrier !== null
         ? String(input.barrier)
         : undefined;
 
-    const propReqId = ++proposalIdCounterRef.current;
-    const buyReqId = propReqId + 1000;
+    const buyReqId = ++proposalIdCounterRef.current + 1000;
 
-    const proposalReq: Record<string, any> = {
-      proposal: 1,
-      amount: input.stake,
-      basis: 'stake',
-      contract_type: input.contractType,
-      currency: input.currency || 'USD',
-      duration: input.duration,
-      duration_unit: input.durationUnit,
-      underlying_symbol: input.symbol,
-      req_id: propReqId,
-    };
-    if (barrierValue !== undefined) proposalReq.barrier = barrierValue;
-
-    console.log('[StingerFX] Sending proposal:', proposalReq);
-
-    proposalWaitersRef.current[propReqId] = (resp) => {
-      if (resp.error) {
-        console.warn('[StingerFX] Proposal error:', resp.error.message);
-        return;
-      }
-      const prop = resp.proposal;
-      if (!prop || !prop.id) {
-        console.warn('[StingerFX] No proposal returned in response');
-        return;
-      }
-      console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout, 'ask:', prop.ask_price);
-
-      // ============================================================
-      // FIX: Use the EXACT ask_price from the proposal.
-      // Deriv validates the buy against the proposal's original terms.
-      // Adding any buffer can trigger "Unknown contract proposal".
-      // ============================================================
-      const buyReq: Record<string, any> = {
-        buy: prop.id,
-        price: Number(prop.ask_price),
-        req_id: buyReqId,
-      };
-
-      console.log('[StingerFX] Sending buy:', buyReq);
-      ws.send(JSON.stringify(buyReq));
+    // FIX 4: buy directly with parameters, no proposal ID needed
+    const buyReq: Record<string, any> = {
+      buy: 1,
+      price: input.stake,
+      parameters: {
+        amount: input.stake,
+        basis: 'stake',
+        contract_type: input.contractType,
+        currency: input.currency || 'USD',
+        duration: input.duration,
+        duration_unit: input.durationUnit,
+        underlying_symbol: input.symbol,
+        ...(barrierValue !== undefined && { barrier: barrierValue }),
+      },
+      req_id: buyReqId,
     };
 
-    ws.send(JSON.stringify(proposalReq));
+    console.log('[StingerFX] Sending direct buy:', buyReq);
+    ws.send(JSON.stringify(buyReq));
   };
 
   const subscribeProposal = (input: ProposalInput, callback: (payout: number) => void) => {
