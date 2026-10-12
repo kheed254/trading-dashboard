@@ -121,10 +121,8 @@ export default function Reports() {
   const handleExport = () => {
     const rows: string[][] = [];
 
-    // Header
     rows.push(['Source', 'Date', 'Market/Symbol', 'Type/Direction', 'Stake/Amount', 'Profit', 'Closed']);
 
-    // Paper trades
     if (showPaper) {
       filteredPaper.forEach((t) => {
         rows.push([
@@ -139,7 +137,6 @@ export default function Reports() {
       });
     }
 
-    // Real trades
     if (showReal) {
       filteredReal.forEach((tx) => {
         rows.push([
@@ -154,12 +151,10 @@ export default function Reports() {
       });
     }
 
-    // Build CSV string
     const csv = rows
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
       .join('\n');
 
-    // Download
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -170,6 +165,11 @@ export default function Reports() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
+
+  /* ---- Total P/L for paper trades (for footer) ---- */
+  const paperTotalPL = filteredPaper.reduce((s, t) => s + (t.profit ?? 0), 0);
+  const paperTotalStake = filteredPaper.reduce((s, t) => s + t.stake, 0);
+  const realTotalAmount = filteredReal.reduce((s, tx) => s + tx.amount, 0);
 
   return (
     <main className="min-h-screen bg-gray-50 pb-32">
@@ -336,29 +336,49 @@ export default function Reports() {
                 No paper trades match the filters
               </div>
             ) : (
-              filteredPaper.map((t) => (
-                <div
-                  key={t.id}
-                  className="grid grid-cols-[70px_1fr_1fr_60px] gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0 text-[11px] items-center"
-                >
-                  <div>
-                    <span className="inline-block bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                      Paper
-                    </span>
+              <>
+                {filteredPaper.map((t) => (
+                  <div
+                    key={t.id}
+                    className="grid grid-cols-[70px_1fr_1fr_60px] gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0 text-[11px] items-center"
+                  >
+                    <div>
+                      <span className="inline-block bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                        Paper
+                      </span>
+                    </div>
+                    <div className="text-navy truncate">{t.market}</div>
+                    <div className="text-gray-600 truncate">
+                      {t.type} · {t.direction}
+                    </div>
+                    <div className={`text-right font-mono font-semibold ${
+                      (t.profit ?? 0) > 0 ? 'text-green-600' :
+                      (t.profit ?? 0) < 0 ? 'text-red-600' :
+                      'text-gray-400'
+                    }`}>
+                      {t.closed ? `${(t.profit ?? 0) >= 0 ? '+' : ''}${(t.profit ?? 0).toFixed(2)}` : 'open'}
+                    </div>
                   </div>
-                  <div className="text-navy truncate">{t.market}</div>
-                  <div className="text-gray-600 truncate">
-                    {t.type} · {t.direction}
+                ))}
+
+                {/* POLISH #8: Total footer row */}
+                <div className="grid grid-cols-[70px_1fr_1fr_60px] gap-2 px-3 py-2.5 bg-gray-50 border-t border-gray-200 text-[11px] items-center font-bold">
+                  <div className="text-gray-500 text-[9px] uppercase tracking-wider">Total</div>
+                  <div className="text-navy">
+                    {filteredPaper.length} trade{filteredPaper.length === 1 ? '' : 's'}
                   </div>
-                  <div className={`text-right font-mono font-semibold ${
-                    (t.profit ?? 0) > 0 ? 'text-green-600' :
-                    (t.profit ?? 0) < 0 ? 'text-red-600' :
+                  <div className="text-gray-600">
+                    Stake: ${paperTotalStake.toFixed(2)}
+                  </div>
+                  <div className={`text-right font-mono ${
+                    paperTotalPL > 0 ? 'text-green-600' :
+                    paperTotalPL < 0 ? 'text-red-600' :
                     'text-gray-400'
                   }`}>
-                    {t.closed ? `${(t.profit ?? 0) >= 0 ? '+' : ''}${(t.profit ?? 0).toFixed(2)}` : 'open'}
+                    {paperTotalPL >= 0 ? '+' : ''}{paperTotalPL.toFixed(2)}
                   </div>
                 </div>
-              ))
+              </>
             )}
           </div>
         )}
@@ -381,34 +401,49 @@ export default function Reports() {
                 No real trades match the filters
               </div>
             ) : (
-              filteredReal.slice(0, 50).map((tx) => (
-                <div
-                  key={tx.transaction_id}
-                  className="grid grid-cols-[70px_1fr_1fr_70px] gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0 text-[11px] items-center"
-                >
-                  <div>
-                    <span className="inline-block bg-blue-100 text-blue-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
-                      Real
-                    </span>
+              <>
+                {filteredReal.slice(0, 50).map((tx) => (
+                  <div
+                    key={tx.transaction_id}
+                    className="grid grid-cols-[70px_1fr_1fr_70px] gap-2 px-3 py-2.5 border-b border-gray-100 last:border-0 text-[11px] items-center"
+                  >
+                    <div>
+                      <span className="inline-block bg-blue-100 text-blue-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                        Real
+                      </span>
+                    </div>
+                    <div className="text-navy capitalize truncate">
+                      {tx.action_type.replace(/_/g, ' ')}
+                    </div>
+                    <div className="text-gray-500 font-mono text-[10px]">
+                      {new Date(tx.transaction_time * 1000).toLocaleString()}
+                    </div>
+                    <div className={`text-right font-mono font-semibold ${
+                      tx.amount > 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="text-navy capitalize truncate">
-                    {tx.action_type.replace(/_/g, ' ')}
+                ))}
+
+                {/* POLISH #8: Total footer row */}
+                <div className="grid grid-cols-[70px_1fr_1fr_70px] gap-2 px-3 py-2.5 bg-gray-50 border-t border-gray-200 text-[11px] items-center font-bold">
+                  <div className="text-gray-500 text-[9px] uppercase tracking-wider">Total</div>
+                  <div className="text-navy">
+                    {filteredReal.length} entr{filteredReal.length === 1 ? 'y' : 'ies'}
                   </div>
-                  <div className="text-gray-500 font-mono text-[10px]">
-                    {new Date(tx.transaction_time * 1000).toLocaleString()}
+                  <div className="text-gray-500 text-[10px]">
+                    {filteredReal.length > 50 ? `Showing 50 of ${filteredReal.length}` : ''}
                   </div>
-                  <div className={`text-right font-mono font-semibold ${
-                    tx.amount > 0 ? 'text-green-600' : 'text-red-600'
+                  <div className={`text-right font-mono ${
+                    realTotalAmount > 0 ? 'text-green-600' :
+                    realTotalAmount < 0 ? 'text-red-600' :
+                    'text-gray-400'
                   }`}>
-                    {tx.amount > 0 ? '+' : ''}{tx.amount.toFixed(2)}
+                    {realTotalAmount >= 0 ? '+' : ''}{realTotalAmount.toFixed(2)}
                   </div>
                 </div>
-              ))
-            )}
-            {filteredReal.length > 50 && (
-              <div className="text-center text-gray-400 text-[10px] py-2 bg-gray-50">
-                Showing first 50 of {filteredReal.length}
-              </div>
+              </>
             )}
           </div>
         )}
