@@ -406,26 +406,20 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
         console.warn('[StingerFX] No proposal returned in response');
         return;
       }
-      console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
+      console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout, 'ask:', prop.ask_price);
 
       // ============================================================
-      // FIXED BUFFER - $0.50 above ask_price
-      // ------------------------------------------------------------
-      // On V100 (1s) the ask_price can move quickly. A fixed $0.50
-      // buffer is far larger than any realistic 1-second move, so the
-      // buy will always execute at or below our max price.
+      // FIX: Use the EXACT ask_price from the proposal.
+      // Deriv validates the buy against the proposal's original terms.
+      // Adding any buffer can trigger "Unknown contract proposal".
       // ============================================================
-      const askPrice = Number(prop.ask_price);
-      const buffer = 0.50;
-      const maxPrice = +(askPrice + buffer).toFixed(2);
-
       const buyReq: Record<string, any> = {
         buy: prop.id,
-        price: maxPrice,
+        price: Number(prop.ask_price),
         req_id: buyReqId,
       };
 
-      console.log('[StingerFX] Sending buy:', buyReq, '(ask:', askPrice, ', buffer:', buffer, ')');
+      console.log('[StingerFX] Sending buy:', buyReq);
       ws.send(JSON.stringify(buyReq));
     };
 
