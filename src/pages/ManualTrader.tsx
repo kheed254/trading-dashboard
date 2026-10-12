@@ -260,17 +260,17 @@ export default function ManualTrader() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0e27] overflow-hidden">
-      {/* ============ TOP: MARKET SELECTOR + SESSION P/L ============ */}
+      {/* ============ TOP: MARKET SELECTOR + SESSION P/L (POLISH #5 APPLIED) ============ */}
       <div className="px-4 py-3 border-b border-white/5 bg-[#141832]">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">100</span>
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <select
               value={marketName}
               onChange={(e) => setMarketName(e.target.value)}
-              className="font-semibold text-white bg-transparent outline-none cursor-pointer text-base w-full"
+              className="font-semibold text-white bg-transparent outline-none cursor-pointer text-sm sm:text-base w-full truncate"
             >
               {MARKETS.map((m) => (
                 <option key={m} value={m} className="bg-[#141832]">{m}</option>
@@ -282,13 +282,15 @@ export default function ManualTrader() {
             </div>
           </div>
 
-          <div className={`px-3 py-1.5 rounded-lg border ${
+          <div className={`px-2 sm:px-3 py-1.5 rounded-lg border flex-shrink-0 ${
             sessionPL > 0 ? 'bg-green-500/10 border-green-500/30' :
             sessionPL < 0 ? 'bg-red-500/10 border-red-500/30' :
             'bg-white/5 border-white/10'
           }`}>
-            <div className="text-[9px] text-gray-400 uppercase tracking-wider text-center">Session</div>
-            <div className={`text-sm font-bold font-mono text-center ${
+            <div className="text-[8px] sm:text-[9px] text-gray-400 uppercase tracking-wider text-center leading-none mb-0.5">
+              Session
+            </div>
+            <div className={`text-xs sm:text-sm font-bold font-mono text-center leading-none ${
               sessionPL > 0 ? 'text-green-400' :
               sessionPL < 0 ? 'text-red-400' :
               'text-gray-400'
