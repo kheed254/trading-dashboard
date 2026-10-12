@@ -463,7 +463,7 @@ function DcirclesTab() {
 }
 
 /* ================================================================
-   SIGNALS TAB
+   SIGNALS TAB (POLISH #11 APPLIED)
    ================================================================ */
 function SignalsTab() {
   const [strategy, setStrategy] = useState('Matches & Differs');
@@ -474,7 +474,8 @@ function SignalsTab() {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const symbol = MARKET_MAP[marketName] as any;
-  const { price, currentDigit, digits } = useDigitStream(symbol, 1000);
+  // POLISH #11: grab `connected` from the hook
+  const { price, currentDigit, digits, connected } = useDigitStream(symbol, 1000);
 
   const targetDigit = 5;
 
@@ -628,15 +629,25 @@ function SignalsTab() {
             </div>
           </div>
 
+          {/* POLISH #11: Analyse button — disabled until socket ready + 50 ticks */}
           <button
             onClick={analyze}
-            className="w-full py-3.5 rounded-lg font-bold text-white text-base shadow-lg hover:opacity-90 active:scale-[0.98] transition"
-            style={{
-              background: 'linear-gradient(135deg, #00c853 0%, #00e676 100%)',
-              boxShadow: '0 0 20px rgba(0,230,118,0.5)',
-            }}
+            disabled={!connected || digits.length < 50}
+            className={`w-full py-3.5 rounded-lg font-bold text-white text-base shadow-lg transition ${
+              !connected || digits.length < 50
+                ? 'opacity-40 cursor-not-allowed'
+                : 'hover:opacity-90 active:scale-[0.98]'
+            }`}
+            style={
+              !connected || digits.length < 50
+                ? { background: '#333' }
+                : {
+                    background: 'linear-gradient(135deg, #00c853 0%, #00e676 100%)',
+                    boxShadow: '0 0 20px rgba(0,230,118,0.5)',
+                  }
+            }
           >
-            Analyse
+            {!connected ? 'Connecting…' : digits.length < 50 ? `Collecting… (${digits.length}/50)` : 'Analyse'}
           </button>
         </div>
 
