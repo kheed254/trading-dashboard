@@ -64,17 +64,27 @@ export default function Cashier() {
     <main className="min-h-screen bg-gray-50 pb-32">
       <div className="max-w-3xl mx-auto px-4 py-6">
 
-        {/* ============ BALANCE CARD ============ */}
+        {/* ============ BALANCE CARD (POLISH #3: with Refresh) ============ */}
         <div className="bg-gradient-to-br from-[#0b1c3f] via-[#12295a] to-[#0b3d91] text-white rounded-2xl p-6 mb-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-white/70 uppercase tracking-wider font-medium">
               Available Balance
             </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-              user.isVirtual ? 'bg-amber-500 text-white' : 'bg-green-500 text-white'
-            }`}>
-              {user.isVirtual ? 'DEMO' : 'REAL'}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => requestStatement(20)}
+                className="text-[10px] text-white/60 hover:text-white flex items-center gap-1 px-2 py-0.5 rounded-full hover:bg-white/10 transition"
+                title="Refresh balance"
+              >
+                <span>↻</span>
+                <span>Refresh</span>
+              </button>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                user.isVirtual ? 'bg-amber-500 text-white' : 'bg-green-500 text-white'
+              }`}>
+                {user.isVirtual ? 'DEMO' : 'REAL'}
+              </span>
+            </div>
           </div>
           <div className="text-4xl font-bold font-mono tabular-nums mb-1">
             {fmtMoney(user.balance)}
