@@ -409,19 +409,14 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
 
       // ============================================================
-      // SLIPPAGE BUFFER FIX
+      // FIXED BUFFER - $0.50 above ask_price
       // ------------------------------------------------------------
-      // The proposal's `ask_price` can tick up between the moment the
-      // proposal is generated and the moment the buy lands at Deriv.
-      // Sending the exact ask_price causes "InvalidContractProposal"
-      // whenever the market moves even a fraction.
-      //
-      // Solution: send a price that is slightly ABOVE ask_price.
-      // Deriv treats `price` as the maximum you are willing to pay, so
-      // the trade executes as long as the new ask is <= our buffer.
+      // On V100 (1s) the ask_price can move quickly. A fixed $0.50
+      // buffer is far larger than any realistic 1-second move, so the
+      // buy will always execute at or below our max price.
       // ============================================================
       const askPrice = Number(prop.ask_price);
-      const buffer = Math.max(askPrice * 0.02, 0.05); // 2% or $0.05, whichever is larger
+      const buffer = 0.50;
       const maxPrice = +(askPrice + buffer).toFixed(2);
 
       const buyReq: Record<string, any> = {
