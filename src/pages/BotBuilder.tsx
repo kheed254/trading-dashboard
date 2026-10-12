@@ -237,6 +237,13 @@ export default function BotBuilder() {
   const { authorized, placeTrade, openTrades } = useAuthWs();
   const { setBotStatus, clearBotStatus } = useBotStatus();
 
+  // FIX: keep the latest status functions in refs so effects do not re-run (and loop)
+  // when these functions change identity on every render.
+  const setBotStatusRef = useRef(setBotStatus);
+  const clearBotStatusRef = useRef(clearBotStatus);
+  setBotStatusRef.current = setBotStatus;
+  clearBotStatusRef.current = clearBotStatus;
+
   const [botRunning, setBotRunning] = useState(false);
   const botRunningRef = useRef(false);
   const [activeContractId, setActiveContractId] = useState<number | null>(null);
@@ -260,16 +267,18 @@ export default function BotBuilder() {
 
   useEffect(() => { botRunningRef.current = botRunning; }, [botRunning]);
 
+  // FIX: only depends on real bot state, not on the status functions
   useEffect(() => {
-    setBotStatus({
+    setBotStatusRef.current({
       owner: 'bot_builder',
       running: botRunning,
       statusText: botRunning ? `Bot is running — ${botStats.runs} runs` : 'Bot is not running',
       progress: botRunning ? 65 : 0,
     });
-  }, [botRunning, botStats.runs, setBotStatus]);
+  }, [botRunning, botStats.runs]);
 
-  useEffect(() => () => clearBotStatus('bot_builder'), [clearBotStatus]);
+  // FIX: cleanup runs only when leaving the page
+  useEffect(() => () => clearBotStatusRef.current('bot_builder'), []);
 
   useEffect(() => {
     const handler = () => {
