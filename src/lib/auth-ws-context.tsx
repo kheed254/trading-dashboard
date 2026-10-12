@@ -372,8 +372,7 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // FIX: Force barrier to be a string. Deriv's digit contract API
-    // rejects numeric barriers on the buy validation step.
+    // Force barrier to be a string
     const barrierValue =
       input.barrier !== undefined && input.barrier !== null
         ? String(input.barrier)
@@ -409,16 +408,29 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
       }
       console.log('[StingerFX] Got proposal', prop.id, 'payout', prop.payout);
 
-      // FIX: Deriv's `buy` only accepts `buy` (proposal id), `price`, and
-      // `req_id`. The barrier is already encoded inside the proposal id —
-      // re-sending it causes "Input validation failed: barrier".
+      // ============================================================
+      // SLIPPAGE BUFFER FIX
+      // ------------------------------------------------------------
+      // The proposal's `ask_price` can tick up between the moment the
+      // proposal is generated and the moment the buy lands at Deriv.
+      // Sending the exact ask_price causes "InvalidContractProposal"
+      // whenever the market moves even a fraction.
+      //
+      // Solution: send a price that is slightly ABOVE ask_price.
+      // Deriv treats `price` as the maximum you are willing to pay, so
+      // the trade executes as long as the new ask is <= our buffer.
+      // ============================================================
+      const askPrice = Number(prop.ask_price);
+      const buffer = Math.max(askPrice * 0.02, 0.05); // 2% or $0.05, whichever is larger
+      const maxPrice = +(askPrice + buffer).toFixed(2);
+
       const buyReq: Record<string, any> = {
         buy: prop.id,
-        price: Number(prop.ask_price),
+        price: maxPrice,
         req_id: buyReqId,
       };
 
-      console.log('[StingerFX] Sending buy:', buyReq);
+      console.log('[StingerFX] Sending buy:', buyReq, '(ask:', askPrice, ', buffer:', buffer, ')');
       ws.send(JSON.stringify(buyReq));
     };
 
