@@ -292,7 +292,7 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* ============ BOTTOM NAV BAR (POLISH #1 APPLIED) ============ */}
+        {/* ============ BOTTOM NAV BAR ============ */}
         <nav className="bg-[#0f2748] border-t border-white/5 overflow-x-auto tab-scroll">
           <div className="max-w-[1600px] mx-auto flex items-center gap-0 text-[13px] px-0">
             {navItems.map((item) => (
@@ -315,7 +315,6 @@ export default function Layout() {
           </div>
         </nav>
 
-        {/* POLISH #1: scroll-padding-left fix */}
         <style>{`
           .tab-scroll::-webkit-scrollbar { display: none; }
           .tab-scroll { -ms-overflow-style: none; scrollbar-width: none; scroll-padding-left: 0; }
@@ -366,7 +365,7 @@ export default function Layout() {
         </div>
       </div>
 
-      {/* ===== GLOBAL AI BUTTON + ENTRY SCANNER ===== */}
+      {/* ===== GLOBAL AI BUTTON + ENTRY SCANNER (POLISH #2 APPLIED) ===== */}
       <GlobalAiButton />
     </div>
   );
@@ -374,6 +373,7 @@ export default function Layout() {
 
 /* ================================================================
    GLOBAL AI BUTTON + ENTRY SCANNER
+   POLISH #2: repositioned for mobile and desktop
    ================================================================ */
 function GlobalAiButton() {
   const [open, setOpen] = useState(false);
@@ -382,7 +382,7 @@ function GlobalAiButton() {
     <>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform"
+        className="fixed bottom-24 md:bottom-6 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform"
         aria-label="Open Entry Scanner"
       >
         AI
