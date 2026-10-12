@@ -64,7 +64,7 @@ export default function Cashier() {
     <main className="min-h-screen bg-gray-50 pb-32">
       <div className="max-w-3xl mx-auto px-4 py-6">
 
-        {/* ============ BALANCE CARD (POLISH #3: with Refresh) ============ */}
+        {/* ============ BALANCE CARD (with Refresh) ============ */}
         <div className="bg-gradient-to-br from-[#0b1c3f] via-[#12295a] to-[#0b3d91] text-white rounded-2xl p-6 mb-6 shadow-lg">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs text-white/70 uppercase tracking-wider font-medium">
@@ -157,10 +157,22 @@ export default function Cashier() {
             </button>
           </div>
 
+          {/* POLISH #9: Improved empty state */}
           {statement.length === 0 ? (
-            <div className="text-center text-gray-400 text-sm py-12">
-              <div className="text-3xl mb-2">📋</div>
-              <div>No transactions yet</div>
+            <div className="text-center py-12 px-6">
+              <div className="text-4xl mb-3">💳</div>
+              <div className="text-sm font-semibold text-navy mb-1">
+                No transactions yet
+              </div>
+              <div className="text-xs text-gray-500 mb-4 leading-relaxed max-w-xs mx-auto">
+                Make your first deposit to start trading, or place a trade with one of your bots to see activity here.
+              </div>
+              <button
+                onClick={handleDeposit}
+                className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg transition"
+              >
+                💰 Deposit Now
+              </button>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
