@@ -144,6 +144,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <header className="bg-navy text-white sticky top-0 z-40">
+        {/* ============ TOP BAR (logo, account) ============ */}
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           <div className="flex items-center gap-3 min-w-0">
             <NavLink to="/" className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0">
@@ -291,18 +292,19 @@ export default function Layout() {
           </div>
         </div>
 
-        <nav className="bg-navy border-t border-white/5 pointer-events-auto overflow-x-auto tab-scroll">
-          <div className="flex items-center gap-0.5 text-[13px] px-2 min-w-max">
+        {/* ============ BOTTOM NAV BAR (matches Deriv Analyser) ============ */}
+        <nav className="bg-[#0f2748] border-t border-white/5 overflow-x-auto tab-scroll">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-0 text-[13px] px-2">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.to === '/dashboard'}
                 className={({ isActive }) =>
-                  `px-3 py-3 whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer ${
+                  `px-4 py-3.5 whitespace-nowrap flex items-center gap-2 transition cursor-pointer font-medium ${
                     isActive
-                      ? 'border-b-2 border-red-500 text-white font-medium'
-                      : 'text-white/80 hover:text-brand-teal'
+                      ? 'bg-[#1a3a6b] text-[#ff6b35] border-b-[3px] border-[#ff6b35]'
+                      : 'text-white/90 hover:text-[#ff6b35] hover:bg-white/5 border-b-[3px] border-transparent'
                   }`
                 }
               >
@@ -371,8 +373,6 @@ export default function Layout() {
 
 /* ================================================================
    GLOBAL AI BUTTON + ENTRY SCANNER
-   - Shows on every page
-   - Opens the draggable EntryScanner panel
    ================================================================ */
 function GlobalAiButton() {
   const [open, setOpen] = useState(false);
