@@ -76,10 +76,38 @@ export default function ManualTrader() {
   const symbol = MARKET_MAP[marketName] as any;
 
   /* ---- Live stream ---- */
-  const { currentDigit, digits, connected } = useDigitStream(symbol, 1000);
+  const { price, currentDigit, digits, connected } = useDigitStream(symbol, 1000);
+
+  /* ---- Price change vs previous tick ---- */
+  const prevPriceRef = useRef<number | null>(null);
+  const [priceChange, setPriceChange] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (price === null) {
+      prevPriceRef.current = null;
+      setPriceChange(null);
+      return;
+    }
+    if (prevPriceRef.current !== null) {
+      setPriceChange(price - prevPriceRef.current);
+    }
+    prevPriceRef.current = price;
+  }, [price]);
 
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
+
+  /* ---- Highest / lowest digits for circle colours ---- */
+  const { highestDigit, lowestDigits, maxPct } = useMemo(() => {
+    if (!digits.length) return { highestDigit: -1, lowestDigits: [] as number[], maxPct: 0 };
+    const sorted = [...digitStats].sort((a, b) => b.pct - a.pct);
+    const asc = [...digitStats].sort((a, b) => a.pct - b.pct);
+    return {
+      highestDigit: sorted[0].digit,
+      lowestDigits: [asc[0].digit, asc[1].digit],
+      maxPct: sorted[0].pct,
+    };
+  }, [digitStats, digits.length]);
 
   /* ---- Journal helper ---- */
   const addJournal = (text: string, kind = 'info') =>
@@ -258,372 +286,406 @@ export default function ManualTrader() {
 
   const buttonsDisabled = isTrading || !authorized || !!targetReached || autoTrade;
 
+  const changePct =
+    price !== null && priceChange !== null && price !== 0
+      ? (priceChange / (price - priceChange)) * 100
+      : null;
+
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] bg-[#0a0e27] overflow-hidden">
-      {/* ============ TOP: MARKET SELECTOR + SESSION P/L (POLISH #5 APPLIED) ============ */}
-      <div className="px-4 py-3 border-b border-white/5 bg-[#141832]">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
+    <div className="min-h-[calc(100vh-56px)] bg-[#f4f3f1] pb-8">
+      <div className="max-w-xl mx-auto px-3 pt-3 space-y-4">
+
+        {/* ============ MARKET CARD ============ */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 px-3 py-3 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">100</span>
           </div>
           <div className="flex-1 min-w-0">
             <select
               value={marketName}
               onChange={(e) => setMarketName(e.target.value)}
-              className="font-semibold text-white bg-transparent outline-none cursor-pointer text-sm sm:text-base w-full truncate"
+              className="font-bold text-gray-900 bg-transparent outline-none cursor-pointer text-base w-full truncate"
             >
               {MARKETS.map((m) => (
-                <option key={m} value={m} className="bg-[#141832]">{m}</option>
+                <option key={m} value={m} className="bg-white text-gray-900">{m}</option>
               ))}
             </select>
-            <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
               <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
-              <span className="text-gray-500">live</span>
+              {price !== null ? (
+                <>
+                  <span>{price.toFixed(2)}</span>
+                  {priceChange !== null && changePct !== null && (
+                    <>
+                      <span>
+                        {priceChange >= 0 ? '+' : '-'} {Math.abs(priceChange).toFixed(2)} ({Math.abs(changePct).toFixed(2)}%)
+                      </span>
+                      <span className={priceChange >= 0 ? 'text-teal-500' : 'text-red-500'}>
+                        {priceChange >= 0 ? '▲' : '▼'}
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span>{connected ? 'live' : 'connecting…'}</span>
+              )}
             </div>
           </div>
 
-          <div className={`px-2 sm:px-3 py-1.5 rounded-lg border flex-shrink-0 ${
-            sessionPL > 0 ? 'bg-green-500/10 border-green-500/30' :
-            sessionPL < 0 ? 'bg-red-500/10 border-red-500/30' :
-            'bg-white/5 border-white/10'
+          <div className={`px-3 py-1.5 rounded-lg border flex-shrink-0 ${
+            sessionPL > 0 ? 'bg-green-50 border-green-300' :
+            sessionPL < 0 ? 'bg-red-50 border-red-300' :
+            'bg-gray-50 border-gray-200'
           }`}>
-            <div className="text-[8px] sm:text-[9px] text-gray-400 uppercase tracking-wider text-center leading-none mb-0.5">
+            <div className="text-[9px] text-gray-500 uppercase tracking-wider text-center leading-none mb-0.5">
               Session
             </div>
-            <div className={`text-xs sm:text-sm font-bold font-mono text-center leading-none ${
-              sessionPL > 0 ? 'text-green-400' :
-              sessionPL < 0 ? 'text-red-400' :
-              'text-gray-400'
+            <div className={`text-sm font-bold font-mono text-center leading-none ${
+              sessionPL > 0 ? 'text-green-600' :
+              sessionPL < 0 ? 'text-red-600' :
+              'text-gray-500'
             }`}>
               {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* ============ MIDDLE: DIGIT GAUGES ============ */}
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-6 relative">
-        <div className="w-full max-w-md">
-          <div className="grid grid-cols-5 gap-3 mb-6">
+        {/* ============ DIGIT CIRCLES ============ */}
+        <div className="px-1 py-2">
+          <div className="grid grid-cols-5 gap-x-2 gap-y-6 mb-6">
             {digitStats.slice(0, 5).map((d) => (
-              <DigitGauge key={d.digit} digit={d.digit} pct={d.pct} isCurrent={d.digit === currentDigit} />
-            ))}
-          </div>
-          <div className="grid grid-cols-5 gap-3">
-            {digitStats.slice(5, 10).map((d) => (
-              <DigitGauge key={d.digit} digit={d.digit} pct={d.pct} isCurrent={d.digit === currentDigit} />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ============ BOTTOM: TRADE TICKET ============ */}
-      <div className="bg-[#141832] rounded-t-2xl border-t border-white/10 px-4 pt-4 pb-6 max-h-[60vh] overflow-y-auto">
-
-        {/* Trade type + Digit */}
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => setShowTypePicker(true)}
-            className="flex-1 flex items-center gap-3 px-3 py-3 bg-[#0a0e27] border border-white/10 rounded-lg text-left"
-          >
-            <span className="text-lg">
-              {tradeType === 'evenodd' ? '🎯' :
-               tradeType === 'matchesdiffers' ? '🔢' :
-               tradeType === 'overunder' ? '📊' :
-               tradeType === 'callput' ? '📈' :
-               tradeType === 'higherlower' ? '↕️' : '👆'}
-            </span>
-            <span className="font-semibold text-white text-sm flex-1">
-              {TRADE_TYPE_LABELS[tradeType]}
-            </span>
-            <span className="text-gray-400">›</span>
-          </button>
-
-          {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
-            <div className="flex items-center gap-1 px-3 py-3 bg-[#0a0e27] border border-white/10 rounded-lg">
-              <span className="text-xs text-gray-400">Digit:</span>
-              <input
-                type="number"
-                min={0}
-                max={9}
-                value={selectedDigit}
-                onChange={(e) => setSelectedDigit(Math.max(0, Math.min(9, Number(e.target.value))))}
-                className="w-8 bg-transparent text-white font-bold text-center outline-none"
+              <DigitGauge
+                key={d.digit}
+                digit={d.digit}
+                pct={d.pct}
+                maxPct={maxPct}
+                isCurrent={d.digit === currentDigit}
+                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
               />
-            </div>
-          )}
-        </div>
-
-        {/* Stake */}
-        <div className="flex items-center gap-2 mb-4">
-          <button
-            onClick={() => adjustStake(-1)}
-            className="w-12 h-12 rounded-lg bg-[#0a0e27] border border-white/10 text-white text-xl font-bold hover:bg-white/5 transition flex items-center justify-center"
-          >
-            −
-          </button>
-          <div className="flex-1 flex items-center justify-center bg-[#0a0e27] border border-white/10 rounded-lg py-3">
-            <input
-              type="number"
-              step="0.5"
-              min="0.35"
-              value={stake}
-              onChange={(e) => setStake(Math.max(0.35, Number(e.target.value) || 0.35))}
-              className="bg-transparent text-white font-bold text-2xl text-center outline-none w-32"
-            />
-            <span className="text-gray-400 text-sm ml-2">USD</span>
+            ))}
           </div>
-          <button
-            onClick={() => adjustStake(1)}
-            className="w-12 h-12 rounded-lg bg-[#0a0e27] border border-white/10 text-white text-xl font-bold hover:bg-white/5 transition flex items-center justify-center"
-          >
-            +
-          </button>
+          <div className="grid grid-cols-5 gap-x-2 gap-y-6">
+            {digitStats.slice(5, 10).map((d) => (
+              <DigitGauge
+                key={d.digit}
+                digit={d.digit}
+                pct={d.pct}
+                maxPct={maxPct}
+                isCurrent={d.digit === currentDigit}
+                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
+              />
+            ))}
+          </div>
         </div>
 
-        {/* Quick chips */}
-        <div className="flex gap-1 mb-4">
-          {[1, 5, 10, 25, 50].map((amount) => (
+        {/* ============ TRADE TICKET ============ */}
+        <div className="bg-[#eeedeb] rounded-xl border border-gray-200 p-3 space-y-3">
+
+          {/* Trade type + Digit */}
+          <div className="flex items-center gap-2">
             <button
-              key={amount}
-              onClick={() => setStake(amount)}
-              className={`flex-1 py-1.5 rounded text-xs font-medium transition ${
-                stake === amount
-                  ? 'bg-teal-500 text-white'
-                  : 'bg-[#0a0e27] text-gray-400 border border-white/10 hover:bg-white/5'
-              }`}
+              onClick={() => setShowTypePicker(true)}
+              className="flex-1 flex items-center gap-3 px-3 py-3 bg-white border border-gray-200 rounded-lg text-left"
             >
-              ${amount}
+              <span className="text-lg">
+                {tradeType === 'evenodd' ? '🎯' :
+                 tradeType === 'matchesdiffers' ? '🔢' :
+                 tradeType === 'overunder' ? '📊' :
+                 tradeType === 'callput' ? '📈' :
+                 tradeType === 'higherlower' ? '↕️' : '👆'}
+              </span>
+              <span className="font-bold text-gray-900 text-sm flex-1">
+                {TRADE_TYPE_LABELS[tradeType]}
+              </span>
+              <span className="text-gray-500 text-lg">›</span>
             </button>
-          ))}
-        </div>
 
-        {/* TP/SL Row */}
-        <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={takeProfitEnabled}
-                  onChange={(e) => { setTakeProfitEnabled(e.target.checked); if (!e.target.checked && !stopLossEnabled) resetSession(); }}
-                  className="w-4 h-4 accent-teal-500"
-                />
-                <span className="text-xs text-white font-medium">Take Profit</span>
-                {targetReached === 'tp' && (
-                  <span className="ml-auto text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full">🎯</span>
-                )}
-              </label>
-              {takeProfitEnabled && (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="1"
-                    value={takeProfitTarget}
-                    onChange={(e) => setTakeProfitTarget(Math.max(1, Number(e.target.value) || 1))}
-                    className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
-                  />
-                  <span className="text-[10px] text-gray-400">USD</span>
-                </div>
-              )}
-            </div>
-
-            <div>
-              <label className="flex items-center gap-2 cursor-pointer mb-2">
-                <input
-                  type="checkbox"
-                  checked={stopLossEnabled}
-                  onChange={(e) => { setStopLossEnabled(e.target.checked); if (!e.target.checked && !takeProfitEnabled) resetSession(); }}
-                  className="w-4 h-4 accent-red-500"
-                />
-                <span className="text-xs text-white font-medium">Stop Loss</span>
-                {targetReached === 'sl' && (
-                  <span className="ml-auto text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">🛑</span>
-                )}
-              </label>
-              {stopLossEnabled && (
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    min="1"
-                    value={stopLossTarget}
-                    onChange={(e) => setStopLossTarget(Math.max(1, Number(e.target.value) || 1))}
-                    className="flex-1 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
-                  />
-                  <span className="text-[10px] text-gray-400">USD</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {(takeProfitEnabled || stopLossEnabled) && (
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
-              <span className="text-[10px] text-gray-500">Session P/L:</span>
-              <span className={`text-xs font-bold ${sessionPL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)} USD
-              </span>
-              {targetReached && (
-                <button
-                  onClick={resetSession}
-                  className="text-[10px] bg-white/10 hover:bg-white/20 text-white px-2 py-1 rounded"
-                >
-                  Reset
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Auto-Trade Row */}
-        <div className="bg-[#0a0e27] border border-white/10 rounded-lg mb-4 p-3">
-          <label className="flex items-center gap-2 cursor-pointer mb-3">
-            <input
-              type="checkbox"
-              checked={autoTrade}
-              onChange={(e) => setAutoTrade(e.target.checked)}
-              disabled={!!targetReached}
-              className="w-4 h-4 accent-blue-500"
-            />
-            <span className="text-xs text-white font-medium">Auto-Trade</span>
-            {autoTrade && (
-              <span className="ml-auto text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full animate-pulse">
-                ● Running
-              </span>
-            )}
-          </label>
-
-          {autoTrade && (
-            <>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] text-gray-400 w-16">Side:</span>
-                <button
-                  onClick={() => setAutoDirection('primary')}
-                  className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
-                    autoDirection === 'primary' ? 'bg-teal-500 text-white' : 'bg-[#141832] text-gray-400'
-                  }`}
-                >
-                  {primaryLabel}
-                </button>
-                <button
-                  onClick={() => setAutoDirection('secondary')}
-                  className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
-                    autoDirection === 'secondary' ? 'bg-red-500 text-white' : 'bg-[#141832] text-gray-400'
-                  }`}
-                >
-                  {secondaryLabel}
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] text-gray-400 w-16">Every:</span>
+            {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
+              <div className="flex items-center gap-1 px-3 py-3 bg-white border border-gray-200 rounded-lg">
+                <span className="text-xs text-gray-500">Digit:</span>
                 <input
                   type="number"
-                  min="1"
-                  max="60"
-                  value={autoDelay}
-                  onChange={(e) => setAutoDelay(Math.max(1, Math.min(60, Number(e.target.value) || 3)))}
-                  className="w-16 bg-[#141832] border border-white/10 rounded-md px-2 py-1 text-white font-bold text-xs text-center outline-none"
+                  min={0}
+                  max={9}
+                  value={selectedDigit}
+                  onChange={(e) => setSelectedDigit(Math.max(0, Math.min(9, Number(e.target.value))))}
+                  className="w-8 bg-transparent text-gray-900 font-bold text-center outline-none"
                 />
-                <span className="text-[10px] text-gray-400">seconds</span>
               </div>
-            </>
-          )}
-        </div>
-
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <button
-            onClick={() => handleTrade('primary')}
-            disabled={buttonsDisabled}
-            className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
-          >
-            <div className="bg-teal-500 text-white py-4 flex items-center justify-center gap-2">
-              <span className="font-bold text-lg">{primaryLabel}</span>
-            </div>
-            <div className="bg-teal-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
-              <span>Payout</span>
-              <span className="font-bold">
-                {primaryPayout !== null ? `${primaryPayout.toFixed(2)}` : '...'}
-              </span>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleTrade('secondary')}
-            disabled={buttonsDisabled}
-            className={`rounded-xl overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : ''}`}
-          >
-            <div className="bg-red-500 text-white py-4 flex items-center justify-center gap-2">
-              <span className="font-bold text-lg">{secondaryLabel}</span>
-            </div>
-            <div className="bg-red-600 text-white py-2 text-center text-xs flex items-center justify-between px-4">
-              <span>Payout</span>
-              <span className="font-bold">
-                {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)}` : '...'}
-              </span>
-            </div>
-          </button>
-        </div>
-
-        {/* Target reached banner */}
-        {targetReached && (
-          <div className={`rounded-lg p-3 text-center mb-3 ${
-            targetReached === 'tp' ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'
-          }`}>
-            <span className={`text-xs font-medium ${
-              targetReached === 'tp' ? 'text-green-400' : 'text-red-400'
-            }`}>
-              {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
-            </span>
-          </div>
-        )}
-
-        {/* Journal Toggle */}
-        <button
-          onClick={() => setShowJournal(!showJournal)}
-          className="w-full text-xs py-2 text-gray-400 hover:text-white border border-white/10 rounded-lg transition"
-        >
-          {showJournal ? '▲ Hide Journal' : `▼ Show Journal (${journal.length})`}
-        </button>
-
-        {/* Journal Panel */}
-        {showJournal && (
-          <div className="mt-3 max-h-48 overflow-y-auto bg-[#0a0e27] border border-white/10 rounded-lg p-3">
-            {journal.length === 0 ? (
-              <div className="text-center text-gray-500 text-xs py-4">Journal empty</div>
-            ) : (
-              journal.map((j, i) => (
-                <div key={i} className="border-b border-white/5 py-1.5 last:border-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] text-gray-500 font-mono">{j.time}</span>
-                    <span className={`text-[11px] ${
-                      j.kind === 'profit' ? 'text-green-400' :
-                      j.kind === 'loss' ? 'text-red-400' :
-                      j.kind === 'buy' ? 'text-blue-400' :
-                      'text-gray-400'
-                    }`}>
-                      {j.text}
-                    </span>
-                  </div>
-                </div>
-              ))
             )}
           </div>
-        )}
+
+          {/* Stake row */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => adjustStake(-1)}
+              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+            >
+              −
+            </button>
+            <div className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg py-2.5">
+              <input
+                type="number"
+                step="0.5"
+                min="0.35"
+                value={stake}
+                onChange={(e) => setStake(Math.max(0.35, Number(e.target.value) || 0.35))}
+                className="bg-transparent text-gray-900 font-bold text-2xl text-center outline-none w-28"
+              />
+              <span className="text-gray-500 text-sm ml-2">USD</span>
+            </div>
+            <button
+              onClick={() => adjustStake(1)}
+              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Quick chips */}
+          <div className="flex gap-1.5">
+            {[1, 5, 10, 25, 50].map((amount) => (
+              <button
+                key={amount}
+                onClick={() => setStake(amount)}
+                className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                  stake === amount
+                    ? 'bg-[#4db3b0] text-white'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                ${amount}
+              </button>
+            ))}
+          </div>
+
+          {/* TP/SL Row */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input
+                    type="checkbox"
+                    checked={takeProfitEnabled}
+                    onChange={(e) => { setTakeProfitEnabled(e.target.checked); if (!e.target.checked && !stopLossEnabled) resetSession(); }}
+                    className="w-4 h-4 accent-teal-500"
+                  />
+                  <span className="text-xs text-gray-800 font-semibold">Take Profit</span>
+                  {targetReached === 'tp' && (
+                    <span className="ml-auto text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full">🎯</span>
+                  )}
+                </label>
+                {takeProfitEnabled && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      value={takeProfitTarget}
+                      onChange={(e) => setTakeProfitTarget(Math.max(1, Number(e.target.value) || 1))}
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-gray-900 font-bold text-xs text-center outline-none"
+                    />
+                    <span className="text-[10px] text-gray-500">USD</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input
+                    type="checkbox"
+                    checked={stopLossEnabled}
+                    onChange={(e) => { setStopLossEnabled(e.target.checked); if (!e.target.checked && !takeProfitEnabled) resetSession(); }}
+                    className="w-4 h-4 accent-red-500"
+                  />
+                  <span className="text-xs text-gray-800 font-semibold">Stop Loss</span>
+                  {targetReached === 'sl' && (
+                    <span className="ml-auto text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded-full">🛑</span>
+                  )}
+                </label>
+                {stopLossEnabled && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="1"
+                      value={stopLossTarget}
+                      onChange={(e) => setStopLossTarget(Math.max(1, Number(e.target.value) || 1))}
+                      className="flex-1 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-gray-900 font-bold text-xs text-center outline-none"
+                    />
+                    <span className="text-[10px] text-gray-500">USD</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {(takeProfitEnabled || stopLossEnabled) && (
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200">
+                <span className="text-[10px] text-gray-500">Session P/L:</span>
+                <span className={`text-xs font-bold ${sessionPL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {sessionPL >= 0 ? '+' : ''}{sessionPL.toFixed(2)} USD
+                </span>
+                {targetReached && (
+                  <button
+                    onClick={resetSession}
+                    className="text-[10px] bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Auto-Trade Row */}
+          <div className="bg-white border border-gray-200 rounded-lg p-3">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoTrade}
+                onChange={(e) => setAutoTrade(e.target.checked)}
+                disabled={!!targetReached}
+                className="w-4 h-4 accent-blue-500"
+              />
+              <span className="text-xs text-gray-800 font-semibold">Auto-Trade</span>
+              {autoTrade && (
+                <span className="ml-auto text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded-full animate-pulse">
+                  ● Running
+                </span>
+              )}
+            </label>
+
+            {autoTrade && (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] text-gray-500 w-16">Side:</span>
+                  <button
+                    onClick={() => setAutoDirection('primary')}
+                    className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                      autoDirection === 'primary' ? 'bg-[#4db3b0] text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {primaryLabel}
+                  </button>
+                  <button
+                    onClick={() => setAutoDirection('secondary')}
+                    className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                      autoDirection === 'secondary' ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {secondaryLabel}
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500 w-16">Every:</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={autoDelay}
+                    onChange={(e) => setAutoDelay(Math.max(1, Math.min(60, Number(e.target.value) || 3)))}
+                    className="w-16 bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-gray-900 font-bold text-xs text-center outline-none"
+                  />
+                  <span className="text-[10px] text-gray-500">seconds</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleTrade('primary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#4db3b0] text-white py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{primaryLabel}</span>
+              </div>
+              <div className="bg-[#3b9a97] text-white py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleTrade('secondary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#ff1f1f] text-white py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{secondaryLabel}</span>
+              </div>
+              <div className="bg-[#d94a3d] text-white py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+          </div>
+
+          {/* Target reached banner */}
+          {targetReached && (
+            <div className={`rounded-lg p-3 text-center ${
+              targetReached === 'tp' ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
+            }`}>
+              <span className={`text-xs font-medium ${
+                targetReached === 'tp' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
+              </span>
+            </div>
+          )}
+
+          {/* Journal Toggle */}
+          <button
+            onClick={() => setShowJournal(!showJournal)}
+            className="w-full text-xs py-2 text-gray-600 hover:text-gray-900 bg-white border border-gray-200 rounded-lg transition"
+          >
+            {showJournal ? '▲ Hide Journal' : `▼ Show Journal (${journal.length})`}
+          </button>
+
+          {/* Journal Panel */}
+          {showJournal && (
+            <div className="max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg p-3">
+              {journal.length === 0 ? (
+                <div className="text-center text-gray-400 text-xs py-4">Journal empty</div>
+              ) : (
+                journal.map((j, i) => (
+                  <div key={i} className="border-b border-gray-100 py-1.5 last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-gray-400 font-mono">{j.time}</span>
+                      <span className={`text-[11px] ${
+                        j.kind === 'profit' ? 'text-green-600' :
+                        j.kind === 'loss' ? 'text-red-600' :
+                        j.kind === 'buy' ? 'text-blue-600' :
+                        'text-gray-500'
+                      }`}>
+                        {j.text}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ============ TRADE TYPE PICKER ============ */}
       {showTypePicker && (
         <div
-          className="fixed inset-0 bg-black/70 flex items-end justify-center z-50"
+          className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
           onClick={() => setShowTypePicker(false)}
         >
           <div
-            className="bg-[#141832] rounded-t-2xl w-full max-w-2xl max-h-[80vh] overflow-auto border-t border-white/10"
+            className="bg-white rounded-t-2xl w-full max-w-2xl max-h-[80vh] overflow-auto border-t border-gray-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 bg-[#141832] p-4 border-b border-white/10 flex items-center justify-between z-10">
-              <h2 className="text-lg font-semibold text-white">Trade types</h2>
-              <button onClick={() => setShowTypePicker(false)} className="text-gray-400 text-2xl leading-none">×</button>
+            <div className="sticky top-0 bg-white p-4 border-b border-gray-200 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold text-gray-900">Trade types</h2>
+              <button onClick={() => setShowTypePicker(false)} className="text-gray-500 text-2xl leading-none">×</button>
             </div>
             <div className="p-4 space-y-3">
               <TypeCard label="Even/Odd" icon="🎯" onClick={() => { setTradeType('evenodd'); setShowTypePicker(false); }} />
@@ -641,36 +703,62 @@ export default function ManualTrader() {
 }
 
 /* ---------- Digit Gauge ---------- */
-function DigitGauge({ digit, pct, isCurrent }: { digit: number; pct: number; isCurrent: boolean }) {
-  const r = 22;
-  const strokeDasharray = 2 * Math.PI * r;
-  const strokeDashoffset = strokeDasharray - (pct / 100) * strokeDasharray;
+function DigitGauge({
+  digit,
+  pct,
+  maxPct,
+  isCurrent,
+  kind,
+}: {
+  digit: number;
+  pct: number;
+  maxPct: number;
+  isCurrent: boolean;
+  kind: 'high' | 'low' | 'normal';
+}) {
+  const r = 21;
+  const C = 2 * Math.PI * r;
+
+  // Arc covers up to half the circle (most frequent digit = half), centred at the bottom
+  const frac = maxPct > 0 ? Math.min(pct / maxPct, 1) * 0.5 : 0;
+  const dash = frac * C;
+  const arcDeg = frac * 360;
+  const rotation = 90 - arcDeg / 2;
+
+  const color = kind === 'high' ? '#3aa8a6' : kind === 'low' ? '#ef1c1c' : '#bdbdbd';
+  const sizeClass = kind === 'high' ? 'w-[72px] h-[72px]' : 'w-16 h-16';
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative w-16 h-16">
-        <svg viewBox="0 0 56 56" className="w-full h-full -rotate-90">
-          <circle cx="28" cy="28" r={r} fill="none" stroke="#1e2347" strokeWidth="3" />
+    <div className="flex justify-center">
+      <div className={`relative ${sizeClass}`}>
+        <svg viewBox="0 0 56 56" className="absolute inset-0 w-full h-full">
+          <circle cx="28" cy="28" r={r} fill="#ffffff" stroke="#dedede" strokeWidth="4" />
           <circle
-            cx="28" cy="28" r={r}
+            cx="28"
+            cy="28"
+            r={r}
             fill="none"
-            stroke={isCurrent ? '#3b82f6' : '#14b8a6'}
-            strokeWidth="3"
-            strokeDasharray={strokeDasharray}
-            strokeDashoffset={strokeDashoffset}
-            strokeLinecap="round"
+            stroke={color}
+            strokeWidth={kind === 'high' ? 5 : 4}
+            strokeDasharray={`${dash} ${C}`}
+            transform={`rotate(${rotation} 28 28)`}
           />
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={`text-base font-bold ${isCurrent ? 'text-blue-400' : 'text-white'}`}>
-            {digit}
-          </span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
+          <span className="text-base font-bold text-gray-900">{digit}</span>
+          <span className="text-[10px] font-semibold text-gray-600">{pct.toFixed(1)}%</span>
         </div>
         {isCurrent && (
-          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-red-500" />
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-3 w-0 h-0"
+            style={{
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderBottom: '8px solid #ff5a3c',
+            }}
+          />
         )}
       </div>
-      <div className="text-[10px] text-gray-400 mt-1">{pct.toFixed(1)}%</div>
     </div>
   );
 }
@@ -680,10 +768,10 @@ function TypeCard({ label, icon, onClick }: { label: string; icon: string; onCli
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-4 bg-[#0a0e27] hover:bg-[#1a1f3d] border border-white/10 rounded-lg text-left transition"
+      className="w-full flex items-center gap-3 px-4 py-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg text-left transition"
     >
       <span className="text-xl">{icon}</span>
-      <span className="text-sm font-medium text-white">{label}</span>
+      <span className="text-sm font-semibold text-gray-900">{label}</span>
     </button>
   );
 }
