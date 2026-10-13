@@ -50,6 +50,13 @@ export default function BulkTrader() {
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
 
+  /* ---- Highest and second highest digit (for circle colours) ---- */
+  const { highestDigit, secondDigit } = useMemo(() => {
+    if (!digits.length) return { highestDigit: -1, secondDigit: -1 };
+    const sorted = [...digitStats].sort((a, b) => b.pct - a.pct);
+    return { highestDigit: sorted[0].digit, secondDigit: sorted[1].digit };
+  }, [digitStats, digits.length]);
+
   /* ---- Over/Under stats ---- */
   const overUnder = useMemo(() => {
     let under = 0, equal = 0, over = 0;
@@ -94,9 +101,9 @@ export default function BulkTrader() {
     };
   }, [digits]);
 
-  /* ---- Recent E/O sequence (last 8) ---- */
+  /* ---- Recent E/O sequence (last 10) ---- */
   const recentParity = useMemo(() => {
-    return digits.slice(-8).map((d) => (d % 2 === 0 ? 'E' : 'O'));
+    return digits.slice(-10).map((d) => (d % 2 === 0 ? 'E' : 'O'));
   }, [digits]);
 
   /* ---- Determine contract type from button click ---- */
@@ -181,7 +188,7 @@ export default function BulkTrader() {
   };
 
   return (
-    <main className="max-w-7xl mx-auto px-3 py-4">
+    <main className="max-w-xl mx-auto px-4 py-5">
       {/* MARKET & TRADE TYPE */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
@@ -189,7 +196,7 @@ export default function BulkTrader() {
           <select
             value={marketName}
             onChange={(e) => setMarketName(e.target.value)}
-            className="w-full border border-gray-300 rounded-md px-2 py-2 text-xs bg-white outline-none focus:border-blue-400"
+            className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm font-bold text-navy bg-gray-100 outline-none focus:border-blue-400 cursor-pointer"
           >
             {MARKETS.map((m) => (
               <option key={m} value={m}>{m}</option>
@@ -201,13 +208,29 @@ export default function BulkTrader() {
           <select
             value={tradeType}
             onChange={(e) => setTradeType(e.target.value as TradeType)}
-            className="w-full border border-gray-300 rounded-md px-2 py-2 text-xs bg-white outline-none focus:border-blue-400"
+            className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm font-bold text-navy bg-gray-100 outline-none focus:border-blue-400 cursor-pointer"
           >
             {TRADE_TYPES.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </div>
+      </div>
+
+      {/* NUMBER OF TICKS */}
+      <div className="mb-4">
+        <Label>Number of Ticks</Label>
+        <input
+          type="number"
+          min={50}
+          max={5000}
+          value={numTicks}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            setNumTicks(v > 0 ? v : 50);
+          }}
+          className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-base bg-gray-100 outline-none focus:border-blue-400 text-center font-bold text-navy"
+        />
       </div>
 
       {/* DIGIT SELECTOR (only for Over/Under and Matches/Differs) */}
@@ -232,65 +255,63 @@ export default function BulkTrader() {
         </div>
       )}
 
-      {/* NUMBER OF TICKS */}
-      <div className="mb-6">
-        <Label>Number of Ticks (Analysis Window)</Label>
-        <input
-          type="number"
-          min={50}
-          max={5000}
-          value={numTicks}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            setNumTicks(v > 0 ? v : 50);
-          }}
-          className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white outline-none focus:border-blue-400 text-center font-semibold"
-        />
-      </div>
-
       {/* CURRENT TICK */}
-      <div className="text-center mb-6">
+      <div className="text-center mb-5">
         <Label center>Current Tick</Label>
-        <div className={`text-3xl font-bold font-mono ${connected ? 'text-blue-600' : 'text-gray-400'}`}>
+        <div className={`text-4xl font-bold ${connected ? 'text-blue-500' : 'text-gray-400'}`}>
           {price !== null ? price.toFixed(2) : 'Loading…'}
         </div>
-        {currentDigit !== null && (
-          <div className="text-xs text-gray-400 mt-1">
-            last digit: {currentDigit}
-          </div>
-        )}
       </div>
 
-      {/* DIGIT CIRCLES 0-9 */}
-      <div className="flex justify-between gap-0.5 mb-6">
+      {/* DIGIT CIRCLES 0-9 (two rows of five) */}
+      <div className="grid grid-cols-5 gap-x-2 gap-y-5 mb-6">
         {digitStats.map((d) => {
           const isCurrent = d.digit === currentDigit;
           const isTarget = needsBarrier && d.digit === targetDigit;
-          const strokeDasharray = 2 * Math.PI * 20;
-          const strokeDashoffset = strokeDasharray - (d.pct / 100) * strokeDasharray;
+
+          const wedgeColor =
+            d.digit === highestDigit ? '#3b82f6' :
+            d.digit === secondDigit ? '#14b8a6' :
+            '#b4b8be';
+
+          const R = 22;
+          const C = 2 * Math.PI * R;
+          const dash = (Math.min(100, Math.max(0, d.pct)) / 100) * C;
 
           return (
-            <div key={d.digit} className="flex flex-col items-center flex-1">
-              <div className="relative w-9 h-9">
-                <svg viewBox="0 0 48 48" className="w-full h-full -rotate-90">
-                  <circle cx="24" cy="24" r="20" fill="none" stroke="#e5e7eb" strokeWidth="6" />
+            <div key={d.digit} className="relative flex justify-center">
+              {isCurrent && (
+                <div
+                  className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 w-0 h-0"
+                  style={{
+                    borderLeft: '6px solid transparent',
+                    borderRight: '6px solid transparent',
+                    borderTop: '8px solid #ef4444',
+                  }}
+                />
+              )}
+              <div className={`relative w-full max-w-[72px] aspect-square rounded-full ${isTarget ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}>
+                <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
+                  {/* track */}
+                  <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke="#d9dce0" strokeWidth="8" />
+                  {/* filled wedge (percentage of full circle) */}
                   <circle
-                    cx="24" cy="24" r="20"
+                    cx="50"
+                    cy="50"
+                    r={R}
                     fill="none"
-                    stroke={isTarget ? '#f59e0b' : isCurrent ? '#3b82f6' : '#14b8a6'}
-                    strokeWidth="6"
-                    strokeDasharray={strokeDasharray}
-                    strokeDashoffset={strokeDashoffset}
-                    strokeLinecap="round"
+                    stroke={wedgeColor}
+                    strokeWidth={R * 2}
+                    strokeDasharray={`${dash} ${C}`}
+                    transform="rotate(-90 50 50)"
+                    opacity="0.85"
                   />
                 </svg>
-                <div className={`absolute inset-0 flex items-center justify-center text-[11px] font-bold ${
-                  isTarget ? 'text-amber-600' : isCurrent ? 'text-blue-600' : 'text-navy'
-                }`}>
-                  {d.digit}
+                <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
+                  <span className="text-base font-bold text-navy">{d.digit}</span>
+                  <span className="text-[10px] font-bold text-navy">{d.pct.toFixed(2)}%</span>
                 </div>
               </div>
-              <div className="text-[9px] text-gray-500 mt-1">{d.pct.toFixed(1)}%</div>
             </div>
           );
         })}
@@ -298,11 +319,11 @@ export default function BulkTrader() {
 
       {/* RECENT E/O SEQUENCE */}
       {tradeType === 'Even/Odd' && (
-        <div className="flex justify-center gap-1 mb-6">
+        <div className="flex justify-center gap-1.5 mb-6 flex-wrap">
           {recentParity.map((p, i) => (
             <span
               key={i}
-              className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-bold text-white ${
+              className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-bold text-white ${
                 p === 'E' ? 'bg-teal-500' : 'bg-red-500'
               }`}
             >
@@ -313,14 +334,14 @@ export default function BulkTrader() {
       )}
 
       {/* TICKS / STAKE / NO OF TRADES */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
+      <div className="grid grid-cols-3 gap-3 mb-4">
         <div>
           <Label center>Ticks</Label>
           <input
             type="number"
             value={ticks}
             onChange={(e) => setTicks(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
+            className="w-full border-2 border-gray-300 rounded-lg px-1 py-2 text-base bg-gray-100 outline-none focus:border-blue-400 text-center font-bold text-navy"
           />
         </div>
         <div>
@@ -330,7 +351,7 @@ export default function BulkTrader() {
             step="0.01"
             value={stake}
             onChange={(e) => setStake(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
+            className="w-full border-2 border-gray-300 rounded-lg px-1 py-2 text-base bg-gray-100 outline-none focus:border-blue-400 text-center font-bold text-navy"
           />
         </div>
         <div>
@@ -339,22 +360,22 @@ export default function BulkTrader() {
             type="number"
             value={numTrades}
             onChange={(e) => setNumTrades(Number(e.target.value))}
-            className="w-full border border-gray-300 rounded-md px-1 py-1.5 text-sm bg-white outline-none focus:border-blue-400 text-center font-medium"
+            className="w-full border-2 border-gray-300 rounded-lg px-1 py-2 text-base bg-gray-100 outline-none focus:border-blue-400 text-center font-bold text-navy"
           />
         </div>
       </div>
 
       {/* ACTION BUTTONS */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <button
           onClick={() => handleTrade('primary')}
           disabled={isTrading || !authorized}
-          className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          className={`rounded-lg overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
         >
-          <div className="bg-teal-500 text-white py-2 font-semibold text-center">
+          <div className="bg-teal-500 text-white py-3 font-bold text-center text-base">
             {isTrading ? 'Placing…' : primaryLabel}
           </div>
-          <div className="bg-teal-400 text-white py-1 text-center text-sm">
+          <div className="bg-teal-400 text-white py-1.5 text-center text-sm font-semibold">
             {primaryPct.toFixed(2)}%
           </div>
         </button>
@@ -362,12 +383,12 @@ export default function BulkTrader() {
         <button
           onClick={() => handleTrade('secondary')}
           disabled={isTrading || !authorized}
-          className={`rounded-md overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          className={`rounded-lg overflow-hidden transition ${isTrading || !authorized ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-90'}`}
         >
-          <div className="bg-red-500 text-white py-2 font-semibold text-center">
+          <div className="bg-red-500 text-white py-3 font-bold text-center text-base">
             {isTrading ? 'Placing…' : secondaryLabel}
           </div>
-          <div className="bg-red-400 text-white py-1 text-center text-sm">
+          <div className="bg-red-400 text-white py-1.5 text-center text-sm font-semibold">
             {secondaryPct.toFixed(2)}%
           </div>
         </button>
@@ -386,7 +407,7 @@ export default function BulkTrader() {
 /* ---------- Helpers ---------- */
 function Label({ children, center }: { children: React.ReactNode; center?: boolean }) {
   return (
-    <div className={`text-[10px] uppercase tracking-wider text-gray-500 font-semibold mb-1 ${center ? 'text-center' : ''}`}>
+    <div className={`text-[11px] uppercase tracking-wider text-gray-500 font-bold mb-1 ${center ? 'text-center' : ''}`}>
       {children}
     </div>
   );
