@@ -293,23 +293,31 @@ export default function Layout() {
         </div>
 
         {/* ============ BOTTOM NAV BAR ============ */}
-        <nav className="bg-[#0f2748] border-t border-white/5 overflow-x-auto tab-scroll">
-          <div className="max-w-[1600px] mx-auto flex items-center gap-0 text-[13px] px-0">
+        <nav className="bg-[#1e3a8a] overflow-x-auto tab-scroll shadow-md">
+          <div className="max-w-[1600px] mx-auto flex items-center gap-0 px-0">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.to === '/dashboard'}
                 className={({ isActive }) =>
-                  `px-4 py-3.5 whitespace-nowrap flex items-center gap-2 transition cursor-pointer font-medium ${
-                    isActive
-                      ? 'bg-[#1a3a6b] text-[#ff6b35] border-b-[3px] border-[#ff6b35]'
-                      : 'text-white/90 hover:text-[#ff6b35] hover:bg-white/5 border-b-[3px] border-transparent'
+                  `px-5 py-3.5 whitespace-nowrap flex items-center gap-3 transition cursor-pointer font-bold text-[15px] text-white ${
+                    isActive ? 'bg-[#14296b]' : 'hover:bg-white/10'
                   }`
                 }
               >
-                <item.Icon />
-                {item.label}
+                {({ isActive }) => (
+                  <>
+                    <span
+                      className={`flex items-center justify-center w-8 h-8 rounded-lg text-[#ff6b35] [&>svg]:w-5 [&>svg]:h-5 ${
+                        isActive ? 'bg-[#ff6b35]/20' : ''
+                      }`}
+                    >
+                      <item.Icon />
+                    </span>
+                    {item.label}
+                  </>
+                )}
               </NavLink>
             ))}
           </div>
