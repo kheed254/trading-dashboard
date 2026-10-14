@@ -510,7 +510,7 @@ export default function BotBuilder() {
 
       <div
         className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
-          mobileReportOpen ? 'h-[calc(100vh-140px)]' : 'h-[56px]'
+          mobileReportOpen ? 'h-[calc(100vh-190px)]' : 'h-[56px]'
         }`}
       >
         <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
