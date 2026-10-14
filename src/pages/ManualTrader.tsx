@@ -97,16 +97,18 @@ export default function ManualTrader() {
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-  /* ---- Highest / lowest digits for circle colours ---- */
-  const { highestDigit, lowestDigits, maxPct } = useMemo(() => {
-    if (!digits.length) return { highestDigit: -1, lowestDigits: [] as number[], maxPct: 0 };
-    const sorted = [...digitStats].sort((a, b) => b.pct - a.pct);
-    const asc = [...digitStats].sort((a, b) => a.pct - b.pct);
-    return {
-      highestDigit: sorted[0].digit,
-      lowestDigits: [asc[0].digit, asc[1].digit],
-      maxPct: sorted[0].pct,
-    };
+  /* ---- Most / least appearing digit for circle colours ---- */
+  const { highestDigit, lowestDigit, maxPct } = useMemo(() => {
+    const max = digitStats.reduce((m, d) => Math.max(m, d.pct), 0);
+    if (digits.length < 20) return { highestDigit: -1, lowestDigit: -1, maxPct: max };
+    let hi = digitStats[0];
+    let lo = digitStats[0];
+    digitStats.forEach((d) => {
+      if (d.pct > hi.pct) hi = d;
+      if (d.pct < lo.pct) lo = d;
+    });
+    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1, maxPct: max };
+    return { highestDigit: hi.digit, lowestDigit: lo.digit, maxPct: max };
   }, [digitStats, digits.length]);
 
   /* ---- Journal helper ---- */
@@ -360,7 +362,7 @@ export default function ManualTrader() {
                 pct={d.pct}
                 maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
-                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
+                kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
             ))}
           </div>
@@ -372,7 +374,7 @@ export default function ManualTrader() {
                 pct={d.pct}
                 maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
-                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
+                kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
             ))}
           </div>
@@ -726,13 +728,23 @@ function DigitGauge({
   const rotation = 90 - arcDeg / 2;
 
   const color = kind === 'high' ? '#3aa8a6' : kind === 'low' ? '#ef1c1c' : '#bdbdbd';
+  const ringColor = kind === 'high' ? '#9fd6d4' : kind === 'low' ? '#f5a3a3' : '#dedede';
   const sizeClass = kind === 'high' ? 'w-[72px] h-[72px]' : 'w-16 h-16';
 
   return (
     <div className="flex justify-center">
       <div className={`relative ${sizeClass}`}>
+        {kind !== 'normal' && (
+          <div
+            className={`absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap ${
+              kind === 'high' ? 'text-teal-600' : 'text-red-500'
+            }`}
+          >
+            {kind === 'high' ? 'Most' : 'Least'}
+          </div>
+        )}
         <svg viewBox="0 0 56 56" className="absolute inset-0 w-full h-full">
-          <circle cx="28" cy="28" r={r} fill="#ffffff" stroke="#dedede" strokeWidth="4" />
+          <circle cx="28" cy="28" r={r} fill="#ffffff" stroke={ringColor} strokeWidth="4" />
           <circle
             cx="28"
             cy="28"

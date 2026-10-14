@@ -29,6 +29,9 @@ const TRADE_TYPES = [
 
 type TradeType = typeof TRADE_TYPES[number];
 
+/* Don't mark most/least digits until there are enough ticks to be meaningful */
+const MIN_TICKS_FOR_MARKS = 20;
+
 /* ---------- Component ---------- */
 export default function BulkTrader() {
   const [marketName, setMarketName] = useState('Volatility 100 Index');
@@ -50,11 +53,17 @@ export default function BulkTrader() {
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
   const evenOdd = useMemo(() => computeEvenOdd(digits), [digits]);
 
-  /* ---- Highest and second highest digit (for circle colours) ---- */
-  const { highestDigit, secondDigit } = useMemo(() => {
-    if (!digits.length) return { highestDigit: -1, secondDigit: -1 };
-    const sorted = [...digitStats].sort((a, b) => b.pct - a.pct);
-    return { highestDigit: sorted[0].digit, secondDigit: sorted[1].digit };
+  /* ---- Most and least appearing digit (for circle colours) ---- */
+  const { highestDigit, lowestDigit } = useMemo(() => {
+    if (digits.length < MIN_TICKS_FOR_MARKS) return { highestDigit: -1, lowestDigit: -1 };
+    let hi = digitStats[0];
+    let lo = digitStats[0];
+    digitStats.forEach((d) => {
+      if (d.pct > hi.pct) hi = d;
+      if (d.pct < lo.pct) lo = d;
+    });
+    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1 };
+    return { highestDigit: hi.digit, lowestDigit: lo.digit };
   }, [digitStats, digits.length]);
 
   /* ---- Over/Under stats ---- */
@@ -264,22 +273,22 @@ export default function BulkTrader() {
       </div>
 
       {/* DIGIT CIRCLES 0-9 (two rows of five) */}
-      <div className="grid grid-cols-5 gap-x-2 gap-y-5 mb-6">
+      <div className="grid grid-cols-5 gap-x-2 gap-y-4 mb-6">
         {digitStats.map((d) => {
           const isCurrent = d.digit === currentDigit;
           const isTarget = needsBarrier && d.digit === targetDigit;
+          const isHigh = d.digit === highestDigit;
+          const isLow = d.digit === lowestDigit;
 
-          const wedgeColor =
-            d.digit === highestDigit ? '#3b82f6' :
-            d.digit === secondDigit ? '#14b8a6' :
-            '#b4b8be';
+          const wedgeColor = isHigh ? '#14b8a6' : isLow ? '#ef4444' : '#b4b8be';
+          const ringColor = isHigh ? '#14b8a6' : isLow ? '#ef4444' : '#d9dce0';
 
           const R = 22;
           const C = 2 * Math.PI * R;
           const dash = (Math.min(100, Math.max(0, d.pct)) / 100) * C;
 
           return (
-            <div key={d.digit} className="relative flex justify-center">
+            <div key={d.digit} className="relative flex flex-col items-center">
               {isCurrent && (
                 <div
                   className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 w-0 h-0"
@@ -292,8 +301,8 @@ export default function BulkTrader() {
               )}
               <div className={`relative w-full max-w-[72px] aspect-square rounded-full ${isTarget ? 'ring-2 ring-amber-400 ring-offset-2' : ''}`}>
                 <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
-                  {/* track */}
-                  <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke="#d9dce0" strokeWidth="8" />
+                  {/* track (coloured for most / least appearing digit) */}
+                  <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke={ringColor} strokeWidth="8" />
                   {/* filled wedge (percentage of full circle) */}
                   <circle
                     cx="50"
@@ -311,6 +320,13 @@ export default function BulkTrader() {
                   <span className="text-base font-bold text-navy">{d.digit}</span>
                   <span className="text-[10px] font-bold text-navy">{d.pct.toFixed(2)}%</span>
                 </div>
+              </div>
+              <div
+                className={`h-4 mt-1 text-[10px] font-bold uppercase tracking-wide ${
+                  isHigh ? 'text-teal-600' : isLow ? 'text-red-500' : ''
+                }`}
+              >
+                {isHigh ? 'Most' : isLow ? 'Least' : ''}
               </div>
             </div>
           );
