@@ -509,17 +509,14 @@ export default function BotBuilder() {
       )}
 
       <div
-        className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white z-30 flex flex-col rounded-t-2xl shadow-2xl transition-all duration-300 ${
-          mobileReportOpen ? 'h-[calc(100vh-190px)]' : 'h-[56px]'
+        className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white z-30 flex flex-col shadow-[0_-2px_6px_rgba(0,0,0,0.08)] transition-all duration-300 ${
+          mobileReportOpen ? 'h-[calc(100vh-180px)]' : 'h-[56px]'
         }`}
       >
-        <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white rounded-t-2xl flex-shrink-0">
-          <button
-            onClick={handleReset}
-            className="text-xs px-3 py-1.5 border border-gray-300 rounded font-medium text-gray-700"
-          >
-            Reset
-          </button>
+        <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white flex-shrink-0">
+          <div className="text-xs text-gray-500 font-medium min-w-[60px]">
+            {botRunning ? `${botStats.runs} runs` : ''}
+          </div>
 
           <button
             onClick={() => setMobileReportOpen(!mobileReportOpen)}
@@ -539,9 +536,12 @@ export default function BotBuilder() {
             </svg>
           </button>
 
-          <div className="text-xs text-gray-500 font-medium">
-            {botRunning ? `${botStats.runs} runs` : ''}
-          </div>
+          <button
+            onClick={handleReset}
+            className="text-sm px-4 py-1.5 border border-gray-400 rounded-md font-bold text-gray-900 bg-white"
+          >
+            Reset
+          </button>
         </div>
 
         {mobileReportOpen && (
@@ -676,7 +676,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
     <>
       <div className="flex border-b border-gray-200 text-sm bg-white flex-shrink-0">
         {(['summary', 'transactions', 'journal'] as const).map((k) => (
-          <button key={k} onClick={() => setDetailTab(k)} className={`flex-1 py-3 capitalize text-center text-sm ${detailTab === k ? 'border-b-2 border-blue-600 text-blue-600 font-semibold' : 'text-gray-500 hover:text-gray-800'}`}>
+          <button key={k} onClick={() => setDetailTab(k)} className={`flex-1 py-3 capitalize text-center text-sm ${detailTab === k ? 'border-b-2 border-blue-500 text-gray-900 font-bold' : 'text-gray-600 hover:text-gray-900'}`}>
             {k === 'summary' ? 'Summary' : k === 'transactions' ? 'Transactions' : 'Journal'}
           </button>
         ))}
@@ -686,8 +686,8 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         {detailTab === 'summary' && (
           <div className="p-4">
             {!show ? (
-              <div className="flex flex-col items-center justify-center text-center text-gray-400 text-xs py-12">
-                {botRunning ? (<><div className="text-navy text-sm font-semibold mb-2">Placing first trade…</div><div>Waiting for market data</div></>) : (<>Hit <span className="font-semibold">Run</span> to start trading.</>)}
+              <div className="flex flex-col items-center justify-center text-center text-gray-400 text-xs py-5">
+                {botRunning ? (<><div className="text-navy text-sm font-semibold mb-2">Placing first trade…</div><div>Waiting for market data</div></>) : (<span className="text-sm text-gray-800 leading-snug">When you’re ready to trade, hit <strong>Run</strong>. You’ll be able to track your bot’s performance here.</span>)}
               </div>
             ) : (
               <>
@@ -766,12 +766,12 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
         )}
       </div>
 
-      <div className="border-t border-gray-200 pt-3 pb-2 px-4 bg-gray-50 flex-shrink-0">
+      <div className="border-t border-gray-200 pt-3 pb-2 px-4 bg-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <div className="flex-1" />
           <button
             onClick={onWhatsThisClick}
-            className="text-[10px] text-blue-600 hover:underline font-medium"
+            className="text-[11px] text-gray-700 underline decoration-dotted font-medium"
           >
             What's this?
           </button>
@@ -906,8 +906,8 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
 
 /* ---------- Small helpers ---------- */
 function Stat({ label, value, highlight = 'none' }: { label: string; value: string; highlight?: 'none' | 'green' | 'red' }) {
-  const color = highlight === 'green' ? 'text-green-600' : highlight === 'red' ? 'text-red-600' : 'text-navy';
-  return (<div><div className="text-gray-500 font-medium text-[10px]">{label}</div><div className={`font-semibold mt-1 ${color}`}>{value}</div></div>);
+  const color = highlight === 'green' ? 'text-green-600' : highlight === 'red' ? 'text-red-600' : 'text-gray-600';
+  return (<div><div className="text-gray-900 font-bold text-[11px]">{label}</div><div className={`font-medium mt-1.5 text-xs ${color}`}>{value}</div></div>);
 }
 
 function SectionHeader({ label }: { label: string }) {
