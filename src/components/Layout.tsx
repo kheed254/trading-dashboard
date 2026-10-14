@@ -138,6 +138,9 @@ export default function Layout() {
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
   const { authorized, user, switchAccount } = useAuthWs();
+
+  // On the public landing page, hide the app tabs for visitors who are not logged in
+  const hideNav = location.pathname === '/' && !authorized;
   const { status: botStatus } = useBotStatus();
 
   const tab: 'real' | 'demo' = activeTab ?? (user?.isVirtual ? 'demo' : 'real');
@@ -324,6 +327,7 @@ export default function Layout() {
         </div>
 
         {/* ============ BOTTOM NAV BAR ============ */}
+        {!hideNav && (
         <nav className="bg-[#1e3a8a] overflow-x-auto tab-scroll shadow-md">
           <div className="max-w-[1600px] mx-auto flex items-center gap-0 px-0">
             {navItems.map((item) => (
@@ -353,6 +357,7 @@ export default function Layout() {
             ))}
           </div>
         </nav>
+        )}
 
         <style>{`
           .tab-scroll::-webkit-scrollbar { display: none; }
@@ -360,11 +365,12 @@ export default function Layout() {
         `}</style>
       </header>
 
-      <div className="flex-1 pb-20 md:pb-0">
+      <div className={`flex-1 ${hideNav ? '' : 'pb-20'} md:pb-0`}>
         <Outlet />
       </div>
 
       {/* ===== BOTTOM DOCK (mobile) ===== */}
+      {!hideNav && (
       <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
         <div className="flex items-center gap-2 px-3 py-2">
           <button
@@ -403,6 +409,7 @@ export default function Layout() {
           </button>
         </div>
       </div>
+      )}
 
       {/* ===== GLOBAL AI BUTTON + ENTRY SCANNER (POLISH #2 APPLIED) ===== */}
       <GlobalAiButton />
