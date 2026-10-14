@@ -81,6 +81,34 @@ const DemoBadge = ({ size = 28 }: { size?: number }) => (
   </span>
 );
 
+/* ---------- Bee logo ---------- */
+const BeeLogo = ({ className = 'w-9 h-9' }: { className?: string }) => (
+  <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
+    <defs>
+      <clipPath id="sfx-bee-body">
+        <ellipse cx="24" cy="29" rx="13" ry="10" />
+      </clipPath>
+    </defs>
+    {/* wings */}
+    <ellipse cx="19" cy="14" rx="9" ry="5.5" fill="#ffffff" fillOpacity="0.85" transform="rotate(-25 19 14)" />
+    <ellipse cx="29" cy="13" rx="9" ry="5.5" fill="#bfe9ff" fillOpacity="0.9" transform="rotate(15 29 13)" />
+    {/* stinger */}
+    <path d="M12 26 L2 29 L12 32 Z" fill="#f59e0b" />
+    {/* body */}
+    <ellipse cx="24" cy="29" rx="13" ry="10" fill="#fbbf24" />
+    <g clipPath="url(#sfx-bee-body)" fill="#0b1c3f">
+      <rect x="17" y="17" width="4.5" height="24" />
+      <rect x="26" y="17" width="4.5" height="24" />
+    </g>
+    {/* head */}
+    <circle cx="38" cy="27" r="6" fill="#f59e0b" />
+    <circle cx="40" cy="26" r="1.7" fill="#0b1c3f" />
+    {/* antennae */}
+    <path d="M37 21.5 Q38 16 43 15" fill="none" stroke="#fbbf24" strokeWidth="1.6" strokeLinecap="round" />
+    <path d="M40 22.5 Q43 18.5 46 19" fill="none" stroke="#fbbf24" strokeWidth="1.6" strokeLinecap="round" />
+  </svg>
+);
+
 const navItems = [
   { label: 'Dashboard', to: '/dashboard', Icon: IconDashboard },
   { label: 'Bot Builder', to: '/bot_builder', Icon: IconBotBuilder },
@@ -147,8 +175,11 @@ export default function Layout() {
         {/* ============ TOP BAR (logo, account) ============ */}
         <div className="max-w-[1600px] mx-auto flex items-center justify-between px-3 sm:px-6 h-14 gap-2">
           <div className="flex items-center gap-3 min-w-0">
-            <NavLink to="/" className="text-lg sm:text-xl font-bold whitespace-nowrap shrink-0">
-              Stinger<span className="text-brand-teal">FX</span>
+            <NavLink to="/" className="flex items-center gap-2 text-lg sm:text-xl font-bold whitespace-nowrap shrink-0">
+              <BeeLogo />
+              <span>
+                Stinger<span className="text-brand-teal">FX</span>
+              </span>
             </NavLink>
             <div
               className="hidden lg:flex items-center gap-2 bg-white/10 backdrop-blur px-3 py-1.5 rounded-full text-xs"
