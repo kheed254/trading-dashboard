@@ -153,11 +153,22 @@ export function useMultiTicks(symbols: SymbolCode[]) {
   return { ticks, connected, error };
 }
 
+/* ---------- Helper: last digit using the market's decimal places ---------- */
+function digitFromQuote(quote: number, pipSize: unknown): number {
+  const pip = Number(pipSize);
+  if (Number.isFinite(pip) && pip >= 0 && pip <= 10) {
+    const last = quote.toFixed(pip).slice(-1);
+    const d = Number(last);
+    if (Number.isFinite(d)) return d;
+  }
+  return lastDigit(quote);
+}
+
 /* ---------- Hook: useDigitStream ---------- */
 /**
- * Subscribes to live ticks for a single symbol and keeps a rolling
- * window of the last N last-digits. Also tracks current price and
- * current last digit.
+ * Loads the last N ticks of history first (so percentages are full from
+ * the start), then keeps listening to live ticks. Keeps a rolling window
+ * of the last N last-digits. Also tracks current price and current digit.
  */
 export function useDigitStream(
   symbol: SymbolCode,
@@ -173,6 +184,18 @@ export function useDigitStream(
   const windowRef = useRef<number>(windowSize);
   windowRef.current = windowSize;
 
+  const requestHistory = (ws: WebSocket, count: number, subscribe: 0 | 1) => {
+    ws.send(
+      JSON.stringify({
+        ticks_history: symbol,
+        end: 'latest',
+        style: 'ticks',
+        count: Math.max(1, Math.min(5000, Math.floor(count))),
+        subscribe,
+      })
+    );
+  };
+
   useEffect(() => {
     setError(null);
     setConnected(false);
@@ -185,15 +208,31 @@ export function useDigitStream(
 
     ws.onopen = () => {
       setConnected(true);
-      ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+      // History first, then live ticks keep coming on the same subscription
+      requestHistory(ws, windowRef.current, 1);
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
+
+        /* ----- History: fill the window with past ticks ----- */
+        if (data.msg_type === 'history' && data.history && Array.isArray(data.history.prices)) {
+          const pip = data.pip_size ?? data.history.pip_size;
+          const prices: number[] = data.history.prices.map((x: any) => Number(x));
+          const ds = prices.map((p) => digitFromQuote(p, pip));
+          const cap = windowRef.current;
+          setDigits(ds.length > cap ? ds.slice(-cap) : ds);
+          if (prices.length) {
+            setPrice(prices[prices.length - 1]);
+            setCurrentDigit(ds[ds.length - 1]);
+          }
+        }
+
+        /* ----- Live tick ----- */
         if (data.msg_type === 'tick' && data.tick) {
           const p = Number(data.tick.quote);
-          const d = lastDigit(p);
+          const d = digitFromQuote(p, data.tick.pip_size);
           setPrice(p);
           setCurrentDigit(d);
           setDigits((prev) => {
@@ -202,7 +241,14 @@ export function useDigitStream(
             return next.length > cap ? next.slice(-cap) : next;
           });
         }
-        if (data.error) setError(data.error.message || 'Unknown error');
+
+        if (data.error) {
+          setError(data.error.message || 'Unknown error');
+          // If history failed, still fall back to live ticks only
+          if (data.echo_req && data.echo_req.ticks_history && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+          }
+        }
       } catch {
         /* ignore */
       }
@@ -221,7 +267,25 @@ export function useDigitStream(
       }
       ws.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
+
+  /* When the user changes the window size, re-load history for the new size */
+  const firstWindowRun = useRef(true);
+  useEffect(() => {
+    if (firstWindowRun.current) {
+      firstWindowRun.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        requestHistory(ws, windowSize, 0); // one-time request, no new subscription
+      }
+    }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowSize]);
 
   return { price, currentDigit, digits, connected, error };
 }
