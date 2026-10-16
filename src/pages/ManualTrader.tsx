@@ -16,6 +16,11 @@ const MARKET_MAP: Record<string, string> = {
   'Volatility 50 Index': 'R_50',
   'Volatility 75 Index': 'R_75',
   'Volatility 100 Index': 'R_100',
+  'Jump 10 Index': 'JD10',
+  'Jump 25 Index': 'JD25',
+  'Jump 50 Index': 'JD50',
+  'Jump 75 Index': 'JD75',
+  'Jump 100 Index': 'JD100',
 };
 
 const MARKETS = Object.keys(MARKET_MAP);
@@ -98,17 +103,16 @@ export default function ManualTrader() {
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
   /* ---- Most / least appearing digit for circle colours ---- */
-  const { highestDigit, lowestDigit, maxPct } = useMemo(() => {
-    const max = digitStats.reduce((m, d) => Math.max(m, d.pct), 0);
-    if (digits.length < 20) return { highestDigit: -1, lowestDigit: -1, maxPct: max };
+  const { highestDigit, lowestDigit } = useMemo(() => {
+    if (digits.length < 20) return { highestDigit: -1, lowestDigit: -1 };
     let hi = digitStats[0];
     let lo = digitStats[0];
     digitStats.forEach((d) => {
       if (d.pct > hi.pct) hi = d;
       if (d.pct < lo.pct) lo = d;
     });
-    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1, maxPct: max };
-    return { highestDigit: hi.digit, lowestDigit: lo.digit, maxPct: max };
+    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1 };
+    return { highestDigit: hi.digit, lowestDigit: lo.digit };
   }, [digitStats, digits.length]);
 
   /* ---- Journal helper ---- */
@@ -360,7 +364,6 @@ export default function ManualTrader() {
                 key={d.digit}
                 digit={d.digit}
                 pct={d.pct}
-                maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
                 kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
@@ -372,7 +375,6 @@ export default function ManualTrader() {
                 key={d.digit}
                 digit={d.digit}
                 pct={d.pct}
-                maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
                 kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
@@ -704,72 +706,65 @@ export default function ManualTrader() {
   );
 }
 
-/* ---------- Digit Gauge ---------- */
+/* ---------- Digit Gauge (same look as Bulk Trader) ---------- */
 function DigitGauge({
   digit,
   pct,
-  maxPct,
   isCurrent,
   kind,
 }: {
   digit: number;
   pct: number;
-  maxPct: number;
   isCurrent: boolean;
   kind: 'high' | 'low' | 'normal';
 }) {
-  const r = 21;
-  const C = 2 * Math.PI * r;
+  const R = 22;
+  const C = 2 * Math.PI * R;
+  const dash = (Math.min(100, Math.max(0, pct)) / 100) * C;
 
-  // Arc covers up to half the circle (most frequent digit = half), centred at the bottom
-  const frac = maxPct > 0 ? Math.min(pct / maxPct, 1) * 0.5 : 0;
-  const dash = frac * C;
-  const arcDeg = frac * 360;
-  const rotation = 90 - arcDeg / 2;
-
-  const color = kind === 'high' ? '#3aa8a6' : kind === 'low' ? '#ef1c1c' : '#bdbdbd';
-  const ringColor = kind === 'high' ? '#9fd6d4' : kind === 'low' ? '#f5a3a3' : '#dedede';
-  const sizeClass = kind === 'high' ? 'w-[72px] h-[72px]' : 'w-16 h-16';
+  const wedgeColor = kind === 'high' ? '#14b8a6' : kind === 'low' ? '#ef4444' : '#b4b8be';
+  const ringColor = kind === 'high' ? '#14b8a6' : kind === 'low' ? '#ef4444' : '#d9dce0';
 
   return (
-    <div className="flex justify-center">
-      <div className={`relative ${sizeClass}`}>
-        {kind !== 'normal' && (
-          <div
-            className={`absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap ${
-              kind === 'high' ? 'text-teal-600' : 'text-red-500'
-            }`}
-          >
-            {kind === 'high' ? 'Most' : 'Least'}
-          </div>
-        )}
-        <svg viewBox="0 0 56 56" className="absolute inset-0 w-full h-full">
-          <circle cx="28" cy="28" r={r} fill="#ffffff" stroke={ringColor} strokeWidth="4" />
+    <div className="relative flex flex-col items-center">
+      {isCurrent && (
+        <div
+          className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 w-0 h-0"
+          style={{
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '8px solid #ef4444',
+          }}
+        />
+      )}
+      <div className="relative w-full max-w-[72px] aspect-square rounded-full">
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
+          {/* track (coloured for most / least appearing digit) */}
+          <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke={ringColor} strokeWidth="8" />
+          {/* filled wedge (percentage of full circle) */}
           <circle
-            cx="28"
-            cy="28"
-            r={r}
+            cx="50"
+            cy="50"
+            r={R}
             fill="none"
-            stroke={color}
-            strokeWidth={kind === 'high' ? 5 : 4}
+            stroke={wedgeColor}
+            strokeWidth={R * 2}
             strokeDasharray={`${dash} ${C}`}
-            transform={`rotate(${rotation} 28 28)`}
+            transform="rotate(-90 50 50)"
+            opacity="0.85"
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
-          <span className="text-base font-bold text-gray-900">{digit}</span>
-          <span className="text-[10px] font-semibold text-gray-600">{pct.toFixed(1)}%</span>
+          <span className="text-base font-bold text-navy">{digit}</span>
+          <span className="text-[10px] font-bold text-navy">{pct.toFixed(2)}%</span>
         </div>
-        {isCurrent && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 -bottom-3 w-0 h-0"
-            style={{
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderBottom: '8px solid #ff5a3c',
-            }}
-          />
-        )}
+      </div>
+      <div
+        className={`h-4 mt-1 text-[10px] font-bold uppercase tracking-wide ${
+          kind === 'high' ? 'text-teal-600' : kind === 'low' ? 'text-red-500' : ''
+        }`}
+      >
+        {kind === 'high' ? 'Most' : kind === 'low' ? 'Least' : ''}
       </div>
     </div>
   );

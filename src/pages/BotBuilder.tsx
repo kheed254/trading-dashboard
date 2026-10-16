@@ -27,6 +27,16 @@ const MARKETS = [
     ],
   },
   {
+    group: 'Derived › Jump Indices',
+    options: [
+      'Jump 10 Index',
+      'Jump 25 Index',
+      'Jump 50 Index',
+      'Jump 75 Index',
+      'Jump 100 Index',
+    ],
+  },
+  {
     group: 'Derived › Daily Reset Indices',
     options: ['Bull Market Index', 'Bear Market Index'],
   },
@@ -79,6 +89,11 @@ const SYMBOL_MAP: Record<string, string> = {
   'Volatility 50 Index': 'R_50',
   'Volatility 75 Index': 'R_75',
   'Volatility 100 Index': 'R_100',
+  'Jump 10 Index': 'JD10',
+  'Jump 25 Index': 'JD25',
+  'Jump 50 Index': 'JD50',
+  'Jump 75 Index': 'JD75',
+  'Jump 100 Index': 'JD100',
   'Bull Market Index': 'BOOM1000',
   'Bear Market Index': 'CRASH1000',
   'EUR/USD': 'frxEURUSD',

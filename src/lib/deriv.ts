@@ -18,6 +18,11 @@ export const SYMBOLS = {
   '1HZ50V': 'Volatility 50 (1s) Index',
   '1HZ75V': 'Volatility 75 (1s) Index',
   '1HZ100V': 'Volatility 100 (1s) Index',
+  JD10: 'Jump 10 Index',
+  JD25: 'Jump 25 Index',
+  JD50: 'Jump 50 Index',
+  JD75: 'Jump 75 Index',
+  JD100: 'Jump 100 Index',
 } as const;
 
 export type SymbolCode = keyof typeof SYMBOLS;

@@ -16,6 +16,11 @@ const MARKET_MAP: Record<string, string> = {
   'Volatility 50 (1s) Index': '1HZ50V',
   'Volatility 75 (1s) Index': '1HZ75V',
   'Volatility 100 (1s) Index': '1HZ100V',
+  'Jump 10 Index': 'JD10',
+  'Jump 25 Index': 'JD25',
+  'Jump 50 Index': 'JD50',
+  'Jump 75 Index': 'JD75',
+  'Jump 100 Index': 'JD100',
 };
 
 const MARKETS = Object.keys(MARKET_MAP);
