@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
@@ -419,17 +419,134 @@ export default function Layout() {
 
 /* ================================================================
    GLOBAL AI BUTTON + ENTRY SCANNER
-   POLISH #2: repositioned for mobile and desktop
+   Draggable: hold and drag it anywhere. Tap/click opens the scanner.
+   The position is remembered on this device.
    ================================================================ */
+const AI_BTN_SIZE = 56;
+const AI_POS_KEY = 'sfx_ai_btn_pos';
+
+function clampAiPos(p: { x: number; y: number }) {
+  const maxX = Math.max(8, window.innerWidth - AI_BTN_SIZE - 8);
+  const maxY = Math.max(8, window.innerHeight - AI_BTN_SIZE - 8);
+  return {
+    x: Math.min(Math.max(8, p.x), maxX),
+    y: Math.min(Math.max(8, p.y), maxY),
+  };
+}
+
 function GlobalAiButton() {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const posRef = useRef<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
+
+  const updatePos = (p: { x: number; y: number } | null) => {
+    posRef.current = p;
+    setPos(p);
+  };
+
+  /* Restore saved position */
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(AI_POS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (typeof saved?.x === 'number' && typeof saved?.y === 'number') {
+          updatePos(clampAiPos(saved));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  /* Keep the button on screen if the window is resized / rotated */
+  useEffect(() => {
+    const onResize = () => {
+      if (posRef.current) updatePos(clampAiPos(posRef.current));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: rect.left,
+      originY: rect.top,
+      moved: false,
+    };
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < 6) return; // small movement = still a tap
+    d.moved = true;
+    setDragging(true);
+    updatePos(clampAiPos({ x: d.originX + dx, y: d.originY + dy }));
+  };
+
+  const onPointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDragging(false);
+    if (!d) return;
+    if (d.moved) {
+      try {
+        if (posRef.current) localStorage.setItem(AI_POS_KEY, JSON.stringify(posRef.current));
+      } catch {
+        /* ignore */
+      }
+    } else {
+      setOpen((o) => !o);
+    }
+  };
+
+  const onPointerCancel = () => {
+    dragRef.current = null;
+    setDragging(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setOpen((o) => !o);
+    }
+  };
+
+  const positionClass = pos ? '' : 'bottom-24 md:bottom-6 right-4';
 
   return (
     <>
       <button
-        onClick={() => setOpen((o) => !o)}
-        className="fixed bottom-24 md:bottom-6 right-4 w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] hover:scale-105 transition-transform"
-        aria-label="Open Entry Scanner"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onKeyDown={onKeyDown}
+        style={{
+          touchAction: 'none',
+          ...(pos ? { left: pos.x, top: pos.y } : {}),
+        }}
+        className={`fixed ${positionClass} w-14 h-14 rounded-full bg-gradient-to-br from-purple-500 via-blue-500 to-teal-400 text-white font-bold shadow-lg flex items-center justify-center z-[100] select-none ${
+          dragging ? 'cursor-grabbing scale-110' : 'cursor-grab hover:scale-105'
+        } transition-transform`}
+        aria-label="Open Entry Scanner (drag to move)"
+        title="Tap to open · drag to move"
       >
         AI
       </button>
