@@ -15,9 +15,17 @@ const MARKET_MAP: Record<string, string> = {
   'Volatility 50 Index': 'R_50',
   'Volatility 75 Index': 'R_75',
   'Volatility 100 Index': 'R_100',
+  'Jump 10 Index': 'JD10',
+  'Jump 25 Index': 'JD25',
+  'Jump 50 Index': 'JD50',
+  'Jump 75 Index': 'JD75',
+  'Jump 100 Index': 'JD100',
 };
 
 const MARKETS = Object.keys(MARKET_MAP);
+
+/* Don't mark most/least digits until there are enough ticks to be meaningful */
+const MIN_TICKS_FOR_MARKS = 20;
 
 const TABS = ['Dcircles', 'Signals', 'Analysis Tool', 'DP Tools', 'Smart Analysis'] as const;
 type Tab = typeof TABS[number];
@@ -108,10 +116,20 @@ function DcirclesTab() {
 
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-  const hottestDigit = useMemo(() => {
-    if (!digitStats.length) return null;
-    return digitStats.reduce((max, d) => (d.pct > max.pct ? d : max), digitStats[0]).digit;
-  }, [digitStats]);
+  /* Most and least appearing digit */
+  const { highestDigit, lowestDigit } = useMemo(() => {
+    if (digits.length < MIN_TICKS_FOR_MARKS || !digitStats.length) {
+      return { highestDigit: -1, lowestDigit: -1 };
+    }
+    let hi = digitStats[0];
+    let lo = digitStats[0];
+    digitStats.forEach((d) => {
+      if (d.pct > hi.pct) hi = d;
+      if (d.pct < lo.pct) lo = d;
+    });
+    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1 };
+    return { highestDigit: hi.digit, lowestDigit: lo.digit };
+  }, [digitStats, digits.length]);
 
   const evenOdd = useMemo(() => {
     let even = 0, odd = 0;
@@ -155,7 +173,8 @@ function DcirclesTab() {
   const recentMD = useMemo(() => digits.slice(-12).map((d) => (d === mdTarget ? 'M' : 'D')), [digits, mdTarget]);
 
   const getRingColor = (digit: number) => {
-    if (digit === hottestDigit) return { stroke: '#f97316', bg: '#fff7ed' };
+    if (digit === highestDigit) return { stroke: '#f97316', bg: '#fff7ed' }; // most appearing
+    if (digit === lowestDigit) return { stroke: '#6366f1', bg: '#eef2ff' }; // least appearing
     if (digit % 2 === 0) return { stroke: '#10b981', bg: '#ecfdf5' };
     return { stroke: '#ef4444', bg: '#fef2f2' };
   };
@@ -259,6 +278,8 @@ function DcirclesTab() {
         <div className="grid grid-cols-5 gap-3">
           {digitStats.map((d) => {
             const colors = getRingColor(d.digit);
+            const isHigh = d.digit === highestDigit;
+            const isLow = d.digit === lowestDigit;
             const r = 22;
             const strokeDasharray = 2 * Math.PI * r;
             const strokeDashoffset = strokeDasharray - (d.pct / 100) * strokeDasharray;
@@ -275,7 +296,7 @@ function DcirclesTab() {
                       cx="28" cy="28" r={r}
                       fill="none"
                       stroke={colors.stroke}
-                      strokeWidth="3"
+                      strokeWidth={isHigh || isLow ? 5 : 3}
                       strokeDasharray={strokeDasharray}
                       strokeDashoffset={strokeDashoffset}
                       strokeLinecap="round"
@@ -283,10 +304,32 @@ function DcirclesTab() {
                   </svg>
                   <span className="relative text-lg font-bold text-navy">{d.digit}</span>
                 </div>
-                <div className="text-xs text-gray-500 mt-1.5 font-medium">{d.pct.toFixed(1)}%</div>
+                <div
+                  className={`text-xs mt-1.5 font-medium ${
+                    isHigh ? 'text-orange-500 font-bold' : isLow ? 'text-indigo-500 font-bold' : 'text-gray-500'
+                  }`}
+                >
+                  {d.pct.toFixed(1)}%
+                </div>
+                <div
+                  className={`h-4 text-[10px] font-bold uppercase tracking-wide ${
+                    isHigh ? 'text-orange-500' : isLow ? 'text-indigo-500' : ''
+                  }`}
+                >
+                  {isHigh ? 'Most' : isLow ? 'Least' : ''}
+                </div>
               </div>
             );
           })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-[11px] text-gray-500">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Most appearing digit
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> Least appearing digit
+          </span>
         </div>
       </div>
 
