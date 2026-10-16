@@ -27,6 +27,80 @@ export const SYMBOLS = {
 
 export type SymbolCode = keyof typeof SYMBOLS;
 
+/* ---------- Helper: public socket that reconnects by itself ---------- */
+/**
+ * Opens the public Deriv socket and, if the connection drops (for example
+ * when the internet or DNS is unstable), tries again automatically with a
+ * growing delay (2s, 4s, 6s ... up to 15s). Returns a cleanup function.
+ */
+function connectWithRetry(opts: {
+  onOpen: (ws: WebSocket) => void;
+  onMessage: (data: any, ws: WebSocket) => void;
+  onStatus: (connected: boolean) => void;
+  onError: (message: string | null) => void;
+  onSocket?: (ws: WebSocket | null) => void;
+}) {
+  let cancelled = false;
+  let current: WebSocket | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let attempts = 0;
+
+  const connect = () => {
+    if (cancelled) return;
+    const ws = new WebSocket(DERIV_WS_URL);
+    current = ws;
+    opts.onSocket?.(ws);
+
+    ws.onopen = () => {
+      if (cancelled || current !== ws) return;
+      attempts = 0;
+      opts.onError(null);
+      opts.onStatus(true);
+      opts.onOpen(ws);
+    };
+
+    ws.onmessage = (event) => {
+      if (cancelled || current !== ws) return;
+      try {
+        opts.onMessage(JSON.parse(event.data), ws);
+      } catch {
+        /* ignore */
+      }
+    };
+
+    ws.onerror = () => {
+      if (cancelled || current !== ws) return;
+      opts.onError('WebSocket error');
+    };
+
+    ws.onclose = () => {
+      if (cancelled || current !== ws) return;
+      opts.onStatus(false);
+      attempts += 1;
+      timer = setTimeout(connect, Math.min(15000, 2000 * attempts));
+    };
+  };
+
+  connect();
+
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
+    const ws = current;
+    if (ws) {
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ forget_all: 'ticks' }));
+        }
+      } catch {
+        /* ignore */
+      }
+      ws.close();
+    }
+    opts.onSocket?.(null);
+  };
+}
+
 /* ---------- Hook: useTicks (single symbol) ---------- */
 export function useTicks(symbol: SymbolCode) {
   const [price, setPrice] = useState<number | null>(null);
@@ -42,41 +116,24 @@ export function useTicks(symbol: SymbolCode) {
     setPrice(null);
     setHistory([]);
 
-    const ws = new WebSocket(DERIV_WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnected(true);
-      ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+    return connectWithRetry({
+      onOpen: (ws) => {
+        ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
+      },
+      onMessage: (data) => {
         if (data.msg_type === 'tick' && data.tick) {
           const p = Number(data.tick.quote);
           setPrice(p);
           setHistory((h) => [...h, p].slice(-20));
         }
         if (data.error) setError(data.error.message || 'Unknown error');
-      } catch {
-        /* ignore */
-      }
-    };
-
-    ws.onerror = () => setError('WebSocket error');
-    ws.onclose = () => setConnected(false);
-
-    return () => {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        }
-      } catch {
-        /* ignore */
-      }
-      ws.close();
-    };
+      },
+      onStatus: setConnected,
+      onError: setError,
+      onSocket: (ws) => {
+        wsRef.current = ws;
+      },
+    });
   }, [symbol]);
 
   return { price, history, connected, error };
@@ -108,19 +165,13 @@ export function useMultiTicks(symbols: SymbolCode[]) {
     symbols.forEach((s) => (initial[s] = { price: null, history: [] }));
     setTicks(initial);
 
-    const ws = new WebSocket(DERIV_WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnected(true);
-      symbols.forEach((s) => {
-        ws.send(JSON.stringify({ ticks: s, subscribe: 1 }));
-      });
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
+    return connectWithRetry({
+      onOpen: (ws) => {
+        symbols.forEach((s) => {
+          ws.send(JSON.stringify({ ticks: s, subscribe: 1 }));
+        });
+      },
+      onMessage: (data) => {
         if (data.msg_type === 'tick' && data.tick) {
           const sym = data.tick.symbol as string;
           const p = Number(data.tick.quote);
@@ -134,24 +185,13 @@ export function useMultiTicks(symbols: SymbolCode[]) {
           });
         }
         if (data.error) setError(data.error.message || 'Unknown error');
-      } catch {
-        /* ignore */
-      }
-    };
-
-    ws.onerror = () => setError('WebSocket error');
-    ws.onclose = () => setConnected(false);
-
-    return () => {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        }
-      } catch {
-        /* ignore */
-      }
-      ws.close();
-    };
+      },
+      onStatus: setConnected,
+      onError: setError,
+      onSocket: (ws) => {
+        wsRef.current = ws;
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbolsKey]);
 
@@ -172,8 +212,9 @@ function digitFromQuote(quote: number, pipSize: unknown): number {
 /* ---------- Hook: useDigitStream ---------- */
 /**
  * Loads the last N ticks of history first (so percentages are full from
- * the start), then keeps listening to live ticks. Keeps a rolling window
- * of the last N last-digits. Also tracks current price and current digit.
+ * the start), then keeps listening to live ticks. If the connection drops
+ * it reconnects by itself and loads the history again. Keeps a rolling
+ * window of the last N last-digits, plus the current price and digit.
  */
 export function useDigitStream(
   symbol: SymbolCode,
@@ -208,19 +249,12 @@ export function useDigitStream(
     setCurrentDigit(null);
     setDigits([]);
 
-    const ws = new WebSocket(DERIV_WS_URL);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setConnected(true);
-      // History first, then live ticks keep coming on the same subscription
-      requestHistory(ws, windowRef.current, 1);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-
+    return connectWithRetry({
+      onOpen: (ws) => {
+        // History first, then live ticks keep coming on the same subscription
+        requestHistory(ws, windowRef.current, 1);
+      },
+      onMessage: (data, ws) => {
         /* ----- History: fill the window with past ticks ----- */
         if (data.msg_type === 'history' && data.history && Array.isArray(data.history.prices)) {
           const pip = data.pip_size ?? data.history.pip_size;
@@ -254,24 +288,13 @@ export function useDigitStream(
             ws.send(JSON.stringify({ ticks: symbol, subscribe: 1 }));
           }
         }
-      } catch {
-        /* ignore */
-      }
-    };
-
-    ws.onerror = () => setError('WebSocket error');
-    ws.onclose = () => setConnected(false);
-
-    return () => {
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ forget_all: 'ticks' }));
-        }
-      } catch {
-        /* ignore */
-      }
-      ws.close();
-    };
+      },
+      onStatus: setConnected,
+      onError: setError,
+      onSocket: (ws) => {
+        wsRef.current = ws;
+      },
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbol]);
 
