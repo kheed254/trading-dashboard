@@ -172,13 +172,6 @@ function DcirclesTab() {
   );
   const recentMD = useMemo(() => digits.slice(-12).map((d) => (d === mdTarget ? 'M' : 'D')), [digits, mdTarget]);
 
-  const getRingColor = (digit: number) => {
-    if (digit === highestDigit) return { stroke: '#f97316', bg: '#fff7ed' }; // most appearing
-    if (digit === lowestDigit) return { stroke: '#6366f1', bg: '#eef2ff' }; // least appearing
-    if (digit % 2 === 0) return { stroke: '#10b981', bg: '#ecfdf5' };
-    return { stroke: '#ef4444', bg: '#fef2f2' };
-  };
-
   const pillStyle = (kind: string) => {
     switch (kind) {
       case 'E': case 'U': case 'M': return 'bg-teal-500 text-white';
@@ -275,45 +268,56 @@ function DcirclesTab() {
           <div className="text-xs text-gray-400">{digits.length}/{ticksWindow}</div>
         </div>
 
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-5 gap-x-2 gap-y-4">
           {digitStats.map((d) => {
-            const colors = getRingColor(d.digit);
+            const isCurrent = d.digit === currentDigit;
             const isHigh = d.digit === highestDigit;
             const isLow = d.digit === lowestDigit;
-            const r = 22;
-            const strokeDasharray = 2 * Math.PI * r;
-            const strokeDashoffset = strokeDasharray - (d.pct / 100) * strokeDasharray;
+
+            const wedgeColor = isHigh ? '#14b8a6' : isLow ? '#ef4444' : '#b4b8be';
+            const ringColor = isHigh ? '#14b8a6' : isLow ? '#ef4444' : '#d9dce0';
+
+            const R = 22;
+            const C = 2 * Math.PI * R;
+            const dash = (Math.min(100, Math.max(0, d.pct)) / 100) * C;
 
             return (
-              <div key={d.digit} className="flex flex-col items-center">
-                <div
-                  className="relative w-14 h-14 rounded-full flex items-center justify-center"
-                  style={{ background: colors.bg }}
-                >
-                  <svg viewBox="0 0 56 56" className="absolute inset-0 w-full h-full -rotate-90">
-                    <circle cx="28" cy="28" r={r} fill="none" stroke="#e5e7eb" strokeWidth="3" />
+              <div key={d.digit} className="relative flex flex-col items-center">
+                {isCurrent && (
+                  <div
+                    className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 w-0 h-0"
+                    style={{
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderTop: '8px solid #ef4444',
+                    }}
+                  />
+                )}
+                <div className="relative w-full max-w-[72px] aspect-square rounded-full">
+                  <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
+                    {/* track (coloured for most / least appearing digit) */}
+                    <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke={ringColor} strokeWidth="8" />
+                    {/* filled wedge (percentage of full circle) */}
                     <circle
-                      cx="28" cy="28" r={r}
+                      cx="50"
+                      cy="50"
+                      r={R}
                       fill="none"
-                      stroke={colors.stroke}
-                      strokeWidth={isHigh || isLow ? 5 : 3}
-                      strokeDasharray={strokeDasharray}
-                      strokeDashoffset={strokeDashoffset}
-                      strokeLinecap="round"
+                      stroke={wedgeColor}
+                      strokeWidth={R * 2}
+                      strokeDasharray={`${dash} ${C}`}
+                      transform="rotate(-90 50 50)"
+                      opacity="0.85"
                     />
                   </svg>
-                  <span className="relative text-lg font-bold text-navy">{d.digit}</span>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
+                    <span className="text-base font-bold text-navy">{d.digit}</span>
+                    <span className="text-[10px] font-bold text-navy">{d.pct.toFixed(2)}%</span>
+                  </div>
                 </div>
                 <div
-                  className={`text-xs mt-1.5 font-medium ${
-                    isHigh ? 'text-orange-500 font-bold' : isLow ? 'text-indigo-500 font-bold' : 'text-gray-500'
-                  }`}
-                >
-                  {d.pct.toFixed(1)}%
-                </div>
-                <div
-                  className={`h-4 text-[10px] font-bold uppercase tracking-wide ${
-                    isHigh ? 'text-orange-500' : isLow ? 'text-indigo-500' : ''
+                  className={`h-4 mt-1 text-[10px] font-bold uppercase tracking-wide ${
+                    isHigh ? 'text-teal-600' : isLow ? 'text-red-500' : ''
                   }`}
                 >
                   {isHigh ? 'Most' : isLow ? 'Least' : ''}
@@ -325,10 +329,10 @@ function DcirclesTab() {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3 text-[11px] text-gray-500">
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Most appearing digit
+            <span className="w-2.5 h-2.5 rounded-full bg-teal-500" /> Most appearing digit
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" /> Least appearing digit
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Least appearing digit
           </span>
         </div>
       </div>
