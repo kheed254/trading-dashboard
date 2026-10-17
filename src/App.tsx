@@ -8,6 +8,7 @@ import TradingBots from './pages/TradingBots';
 import BulkTrader from './pages/BulkTrader';
 import AnalysisTool from './pages/AnalysisTool';
 import Charts from './pages/Charts';
+import TradingView from './pages/TradingView';
 import Reports from './pages/Reports';
 import ManualTrader from './pages/ManualTrader';
 import CopyTrading from './pages/CopyTrading';
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/bulk_trader" element={<BulkTrader />} />
             <Route path="/analysis_tool" element={<AnalysisTool />} />
             <Route path="/charts" element={<Charts />} />
+            <Route path="/tradingview" element={<TradingView />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/manual_trader" element={<ManualTrader />} />
             <Route path="/copy_trading" element={<CopyTrading />} />

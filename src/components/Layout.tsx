@@ -58,6 +58,12 @@ const IconCopyTrading = () => (
   </svg>
 );
 
+const IconTradingView = () => (
+  <svg viewBox="0 0 24 24" className="w-4 h-4" fill="currentColor">
+    <path d="M3 3h2v16h16v2H3V3zm4 11l3.5-5 3 3L18 6l1.6 1.2-6 8-3-3-2.9 4.2L7 14z" />
+  </svg>
+);
+
 const DemoBadge = ({ size = 28 }: { size?: number }) => (
   <span
     className="rounded-full bg-[#8fb0b8] flex items-center justify-center flex-shrink-0"
@@ -120,6 +126,7 @@ const navItems = [
   { label: 'Cashier', to: '/cashier', Icon: IconCashier },
   { label: 'Manual Trader', to: '/manual_trader', Icon: IconManualTrader },
   { label: 'Copy Trading', to: '/copy_trading', Icon: IconCopyTrading },
+  { label: 'TradingView', to: '/tradingview', Icon: IconTradingView },
 ];
 
 function fmtMoney(n: number) {
