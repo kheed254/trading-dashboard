@@ -25,6 +25,9 @@ const MARKET_MAP: Record<string, string> = {
 
 const MARKETS = Object.keys(MARKET_MAP);
 
+/* Show percentages without trailing zeros: 8.10 -> 8.1, 10.00 -> 10, 0.00 -> 0 */
+const fmtPct = (n: number) => `${parseFloat(n.toFixed(2))}%`;
+
 const TRADE_TYPES = [
   'Even/Odd',
   'Over/Under',
@@ -369,7 +372,7 @@ export default function BulkTrader() {
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
                   <span className="text-base font-bold text-navy">{d.digit}</span>
-                  <span className="text-[10px] font-bold text-navy">{d.pct.toFixed(2)}%</span>
+                  <span className="text-[10px] font-bold text-navy">{fmtPct(d.pct)}</span>
                 </div>
               </div>
               <div
