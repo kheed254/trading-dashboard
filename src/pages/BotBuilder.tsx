@@ -524,8 +524,8 @@ export default function BotBuilder() {
       )}
 
       <div
-        className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white z-30 flex flex-col shadow-[0_-2px_6px_rgba(0,0,0,0.08)] transition-all duration-300 ${
-          mobileReportOpen ? 'h-[calc(100vh-180px)]' : 'h-[56px]'
+        className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white flex flex-col shadow-[0_-2px_6px_rgba(0,0,0,0.08)] ${
+          mobileReportOpen ? 'top-14 z-[45]' : 'h-[56px] z-30'
         }`}
       >
         <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white flex-shrink-0">
