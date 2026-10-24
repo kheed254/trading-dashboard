@@ -766,12 +766,12 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
                         <span className="text-base leading-none">{t.contract_type.includes('DIGIT') ? '🔢' : t.contract_type.includes('CALL') || t.contract_type.includes('PUT') ? '↗️' : '📊'}</span>
                         <span className="text-[11px] font-medium text-gray-700">{t.contract_type}</span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-[11px]"><span className="text-red-500 text-base leading-none">◉</span><span className="font-mono text-gray-700">{t.entry_spot || '—'}</span></div>
+                      <div className="flex items-center gap-1.5 text-[11px]"><span className="text-red-500 text-base leading-none">◉</span><span className="font-mono text-gray-700">{t.entry_display ?? (t.entry_spot || '—')}</span></div>
                       <div className="text-right text-[11px] font-mono text-gray-700">{t.buy_price.toFixed(2)} USD</div>
                     </div>
                     <div className="grid grid-cols-[80px_1fr_1fr] gap-2 px-4 items-center mt-1">
                       <div />
-                      <div className="flex items-center gap-1.5 text-[11px]"><span className="text-gray-400 text-base leading-none">◯</span><span className="font-mono text-gray-700">{t.is_sold ? t.current_spot || '—' : '…'}</span></div>
+                      <div className="flex items-center gap-1.5 text-[11px]"><span className="text-gray-400 text-base leading-none">◯</span><span className="font-mono text-gray-700">{t.is_sold ? (t.exit_display ?? (t.current_spot || '—')) : '…'}</span></div>
                       <div className={`text-right text-[11px] font-mono font-semibold ${won ? 'text-green-600' : lost ? 'text-red-600' : 'text-gray-400'}`}>{t.is_sold ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)} USD` : 'open'}</div>
                     </div>
                   </div>

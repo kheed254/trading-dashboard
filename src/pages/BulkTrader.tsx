@@ -502,6 +502,8 @@ function ReportPanel({
     profit: number;
     current_spot: number;
     entry_spot: number;
+    entry_display?: string;
+    exit_display?: string;
     is_sold: boolean;
   }[];
   journal: { time: string; text: string; kind: string }[];
@@ -535,8 +537,8 @@ function ReportPanel({
         t.contract_id,
         t.symbol,
         t.contract_type,
-        t.entry_spot || '',
-        t.is_sold ? t.current_spot || '' : '',
+        t.entry_display ?? (t.entry_spot || ''),
+        t.is_sold ? (t.exit_display ?? (t.current_spot || '')) : '',
         t.buy_price.toFixed(2),
         t.is_sold ? t.profit.toFixed(2) : '',
       ]),
@@ -656,7 +658,7 @@ function ReportPanel({
                       <div className="text-[10px] font-medium text-gray-700 break-all">{t.contract_type}</div>
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <span className="text-red-500 text-base leading-none">◉</span>
-                        <span className="font-mono text-gray-700">{t.entry_spot || '—'}</span>
+                        <span className="font-mono text-gray-700">{t.entry_display ?? (t.entry_spot || '—')}</span>
                       </div>
                       <div className="text-right text-[11px] font-mono text-gray-700">
                         {t.buy_price.toFixed(2)} USD
@@ -667,7 +669,7 @@ function ReportPanel({
                       <div className="flex items-center gap-1.5 text-[11px]">
                         <span className="text-gray-400 text-base leading-none">◯</span>
                         <span className="font-mono text-gray-700">
-                          {t.is_sold ? t.current_spot || '—' : '…'}
+                          {t.is_sold ? (t.exit_display ?? (t.current_spot || '—')) : '…'}
                         </span>
                       </div>
                       <div

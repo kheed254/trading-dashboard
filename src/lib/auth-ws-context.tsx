@@ -35,6 +35,9 @@ export type OpenTrade = {
   longcode?: string;
   entry_time?: number;
   exit_time?: number;
+  /** entry / exit spot exactly as Deriv shows them (keeps trailing zeros, e.g. 1025.30) */
+  entry_display?: string;
+  exit_display?: string;
 };
 
 export type StatementEntry = {
@@ -239,6 +242,21 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
           const c = data.proposal_open_contract;
           setOpenTrades((prev) => {
             const idx = prev.findIndex((t) => t.contract_id === c.contract_id);
+            const firstOf = (...vals: any[]) => {
+              for (const v of vals) {
+                if (v !== undefined && v !== null && v !== '') return String(v);
+              }
+              return undefined;
+            };
+            // Entry = first tick after the trade starts. Exit = the tick the contract ended on.
+            // (current_spot is just the latest price, so it is NOT the real exit spot.)
+            const entryDisplay = firstOf(
+              c.entry_tick_display_value, c.entry_spot_display_value, c.entry_tick, c.entry_spot
+            );
+            const exitDisplay = firstOf(
+              c.exit_tick_display_value, c.exit_spot_display_value, c.exit_tick, c.exit_spot,
+              c.sell_spot_display_value, c.sell_spot
+            );
             const trade: OpenTrade = {
               contract_id: c.contract_id,
               symbol: c.underlying || c.symbol || '',
@@ -252,6 +270,8 @@ export function AuthWsProvider({ children }: { children: ReactNode }) {
               longcode: c.longcode,
               entry_time: c.entry_tick_time || c.date_start,
               exit_time: c.exit_tick_time,
+              entry_display: entryDisplay ?? (idx >= 0 ? prev[idx].entry_display : undefined),
+              exit_display: exitDisplay ?? (idx >= 0 ? prev[idx].exit_display : undefined),
             };
             if (idx >= 0) { const n = [...prev]; n[idx] = trade; return n; }
             return [trade, ...prev];
