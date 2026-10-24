@@ -376,46 +376,41 @@ export default function Layout() {
         <Outlet />
       </div>
 
-      {/* ===== BOTTOM DOCK (mobile) ===== */}
+      {/* ===== BOTTOM DOCK (mobile) — same look as the Bot Builder run bar ===== */}
       {!hideNav && (
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 md:hidden z-20">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button
-            onClick={handleDockRun}
-            className={`${
-              botStatus.running
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-teal-500 hover:bg-teal-600'
-            } text-white text-sm font-semibold px-4 py-2 rounded-md flex items-center gap-2 shrink-0 transition`}
-          >
-            <span className="text-xs">{botStatus.running ? '■' : '▶'}</span>
-            {botStatus.running ? 'Stop' : 'Run'}
-          </button>
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-white/60 mb-0.5 truncate">
-              {botStatus.statusText}
-            </div>
-            <div className="h-0.5 bg-white/10 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-teal-500 transition-all"
-                style={{ width: `${botStatus.progress}%` }}
-              />
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] md:hidden z-20">
+          <div className="flex items-stretch px-3 py-2">
+            <button
+              onClick={handleDockRun}
+              className={`${
+                botStatus.running ? 'bg-red-500 hover:bg-red-600' : 'bg-[#4db3b0] hover:bg-[#3f9f9c]'
+              } text-white font-bold text-lg px-5 py-2.5 rounded-l-md flex items-center gap-2.5 shrink-0 transition`}
+            >
+              {botStatus.running ? (
+                <span className="w-4 h-4 bg-white rounded-sm" />
+              ) : (
+                <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+                  <path d="M6 4l14 8-14 8V4z" />
+                </svg>
+              )}
+              {botStatus.running ? 'Stop' : 'Run'}
+            </button>
+            <div className="flex-1 min-w-0 border border-gray-200 border-l-0 rounded-r-md bg-white px-3 py-1.5 flex flex-col justify-center">
+              <div className="text-[13px] font-bold text-gray-900 text-center truncate mb-2">
+                {botStatus.statusText}
+              </div>
+              <div className="relative h-1 bg-gray-200 rounded-full">
+                <div
+                  className="absolute inset-y-0 left-0 bg-[#4db3b0] rounded-full transition-all"
+                  style={{ width: `${botStatus.progress}%` }}
+                />
+                <span className="absolute top-0 left-0 w-1 h-1 bg-gray-700 rounded-full" />
+                <span className="absolute top-0 left-1/2 w-1 h-1 bg-gray-700 rounded-full" />
+                <span className="absolute top-0 right-0 w-1 h-1 bg-gray-700 rounded-full" />
+              </div>
             </div>
           </div>
-          <button
-            onClick={() =>
-              alert(
-                botStatus.running
-                  ? 'Bot is running. Tap Stop to pause.'
-                  : 'Bot is idle. Tap Run to start.'
-              )
-            }
-            className="w-7 h-7 rounded-full border border-white/40 flex items-center justify-center text-white/70 text-xs shrink-0"
-          >
-            i
-          </button>
         </div>
-      </div>
       )}
 
       {/* ===== GLOBAL AI BUTTON + ENTRY SCANNER (POLISH #2 APPLIED) ===== */}

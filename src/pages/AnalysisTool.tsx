@@ -77,19 +77,23 @@ export default function AnalysisTool() {
         </div>
       )}
 
-      {/* ============ BOTTOM DOCK ============ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-[#0b1c3f] text-white border-t border-white/10 z-20">
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button className="bg-teal-500 hover:bg-teal-600 text-white text-sm font-semibold px-5 py-2.5 rounded-md flex items-center gap-2 shrink-0">
-            <span className="text-xs">▶</span>
+      {/* ============ BOTTOM DOCK (same look as the Bot Builder run bar) ============ */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-[0_-2px_8px_rgba(0,0,0,0.08)] z-20">
+        <div className="flex items-stretch px-3 py-2">
+          <button className="bg-[#4db3b0] hover:bg-[#3f9f9c] text-white font-bold text-lg px-5 py-2.5 rounded-l-md flex items-center gap-2.5 shrink-0 transition">
+            <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+              <path d="M6 4l14 8-14 8V4z" />
+            </svg>
             Run
           </button>
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-white/70 mb-1 truncate text-center">
+          <div className="flex-1 min-w-0 border border-gray-200 border-l-0 rounded-r-md bg-white px-3 py-1.5 flex flex-col justify-center">
+            <div className="text-[13px] font-bold text-gray-900 text-center truncate mb-2">
               Bot is not running
             </div>
-            <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-              <div className="h-full bg-teal-500 transition-all" style={{ width: '0%' }} />
+            <div className="relative h-1 bg-gray-200 rounded-full">
+              <span className="absolute top-0 left-0 w-1 h-1 bg-gray-700 rounded-full" />
+              <span className="absolute top-0 left-1/2 w-1 h-1 bg-gray-700 rounded-full" />
+              <span className="absolute top-0 right-0 w-1 h-1 bg-gray-700 rounded-full" />
             </div>
           </div>
         </div>
