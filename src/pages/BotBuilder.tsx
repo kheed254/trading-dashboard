@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo, saveNamedBot, summarizeBot } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
 import { useAuthWs } from '../lib/auth-ws-context';
@@ -250,6 +250,18 @@ export default function BotBuilder() {
   const [showWhatsThis, setShowWhatsThis] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
+
+  // The report only shows trades made after opening this page (or after Reset)
+  const [resetCount, setResetCount] = useState(0);
+  const baselineRef = useRef<Set<number> | null>(null);
+  if (baselineRef.current === null) {
+    baselineRef.current = new Set(openTrades.map((t) => t.contract_id));
+  }
+  const sessionTrades = useMemo(
+    () => openTrades.filter((t) => !baselineRef.current!.has(t.contract_id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openTrades, resetCount]
+  );
   const { setBotStatus, clearBotStatus } = useBotStatus();
 
   // FIX: keep the latest status functions in refs so effects do not re-run (and loop)
@@ -400,6 +412,10 @@ export default function BotBuilder() {
   const handleLoad = () => { const saved = loadBot(); if (!saved || saved.blocks.length === 0) { alert('No saved bot found.'); return; } setBlocks(saved.blocks as Block[]); setLastSavedAt(saved.savedAt); };
 
   const handleReset = () => {
+    // forget every trade made so far, so the lists and totals start clean
+    baselineRef.current = new Set(openTrades.map((t) => t.contract_id));
+    setResetCount((c) => c + 1);
+    setDetailTab('summary');
     setBotStats({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
     setBotJournal([]);
     setActiveContractId(null);
@@ -485,7 +501,7 @@ export default function BotBuilder() {
   const reportProps = {
     botRunning,
     botStats,
-    openTrades,
+    openTrades: sessionTrades,
     activeContractId,
     botJournal,
     detailTab,
