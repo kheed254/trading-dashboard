@@ -274,11 +274,35 @@ export default function BotBuilder() {
   const [botRunning, setBotRunning] = useState(false);
   const botRunningRef = useRef(false);
   const [activeContractId, setActiveContractId] = useState<number | null>(null);
-  const [botStats, setBotStats] = useState({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
   const [currentStake, setCurrentStake] = useState<number | null>(null);
   const consecutiveLossesRef = useRef(0);
   const [botJournal, setBotJournal] = useState<{ time: string; text: string; kind: string }[]>([]);
   const [detailTab, setDetailTab] = useState<'summary' | 'transactions' | 'journal'>('summary');
+
+  // Totals come straight from the trade list, so they always match the Transactions tab
+  const displayStats = useMemo(() => {
+    let wins = 0, losses = 0, totalStake = 0, totalPayout = 0, pl = 0;
+    sessionTrades.forEach((t) => {
+      totalStake += t.buy_price;
+      if (t.is_sold) {
+        pl += t.profit;
+        if (t.profit > 0) {
+          wins++;
+          totalPayout += t.buy_price + t.profit;
+        } else {
+          losses++;
+        }
+      }
+    });
+    return {
+      runs: sessionTrades.length,
+      wins,
+      losses,
+      totalStake: +totalStake.toFixed(2),
+      totalPayout: +totalPayout.toFixed(2),
+      pl: +pl.toFixed(2),
+    };
+  }, [sessionTrades]);
 
   const addJournal = (text: string, kind = 'info') =>
     setBotJournal((prev) => [{ time: new Date().toLocaleTimeString(), text, kind }, ...prev].slice(0, 100));
@@ -299,10 +323,10 @@ export default function BotBuilder() {
     setBotStatusRef.current({
       owner: 'bot_builder',
       running: botRunning,
-      statusText: botRunning ? `Bot is running — ${botStats.runs} runs` : 'Bot is not running',
+      statusText: botRunning ? `Bot is running — ${displayStats.runs} runs` : 'Bot is not running',
       progress: botRunning ? 65 : 0,
     });
-  }, [botRunning, botStats.runs]);
+  }, [botRunning, displayStats.runs]);
 
   // FIX: cleanup runs only when leaving the page
   useEffect(() => () => clearBotStatusRef.current('bot_builder'), []);
@@ -324,55 +348,57 @@ export default function BotBuilder() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorized]);
 
+  // Every finished trade is processed exactly once (stake / martingale / journal / TP-SL)
+  const processedRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     if (!openTrades.length) return;
-    openTrades.forEach((t) => {
-      if (t.is_sold && t.contract_id === activeContractId) {
-        const won = t.profit > 0;
-        const baseStake = getBaseStake();
-        const martLevel = getMartingaleLevel();
+    let anySettled = false;
 
-        setBotStats((prev) => ({
-          runs: prev.runs,
-          wins: won ? prev.wins + 1 : prev.wins,
-          losses: !won ? prev.losses + 1 : prev.losses,
-          totalStake: +(prev.totalStake + t.buy_price).toFixed(2),
-          totalPayout: won ? +(prev.totalPayout + t.buy_price + t.profit).toFixed(2) : prev.totalPayout,
-          pl: +(prev.pl + t.profit).toFixed(2),
-        }));
+    // oldest first, so martingale follows the real order of results
+    [...openTrades].reverse().forEach((t) => {
+      if (!t.is_sold) return;
+      if (processedRef.current.has(t.contract_id)) return;
+      if (baselineRef.current!.has(t.contract_id)) return; // from before this page / before Reset
+      processedRef.current.add(t.contract_id);
+      anySettled = true;
 
-        if (won) {
-          consecutiveLossesRef.current = 0;
-          setCurrentStake(baseStake);
-          addJournal(`✓ Won +$${t.profit.toFixed(2)} — stake reset to $${baseStake.toFixed(2)}`, 'profit');
-        } else {
-          consecutiveLossesRef.current += 1;
-          const nextStake = +(t.buy_price * martLevel).toFixed(2);
-          setCurrentStake(nextStake);
-          addJournal(`✗ Lost -$${Math.abs(t.profit).toFixed(2)} — Martingale lvl ${consecutiveLossesRef.current}, next $${nextStake.toFixed(2)}`, 'loss');
-        }
-        setActiveContractId(null);
+      const won = t.profit > 0;
+      const baseStake = getBaseStake();
+      const martLevel = getMartingaleLevel();
 
-        const tp = getTakeProfit();
-        setBotStats((prev) => {
-          if (tp > 0 && prev.pl >= tp && botRunningRef.current) {
-            setBotRunning(false);
-            addJournal(`🎯 Take-profit hit (+$${prev.pl.toFixed(2)}) — bot stopped`, 'profit');
-          }
-          return prev;
-        });
-        const sl = getStopLoss();
-        setBotStats((prev) => {
-          if (sl > 0 && sl < 900 && prev.pl <= -sl && botRunningRef.current) {
-            setBotRunning(false);
-            addJournal(`Stop-loss hit ($${sl}) — bot stopped`, 'loss');
-          }
-          return prev;
-        });
+      if (won) {
+        consecutiveLossesRef.current = 0;
+        setCurrentStake(baseStake);
+        addJournal(`✓ Won +$${t.profit.toFixed(2)} — stake reset to $${baseStake.toFixed(2)}`, 'profit');
+      } else {
+        consecutiveLossesRef.current += 1;
+        const nextStake = +(t.buy_price * martLevel).toFixed(2);
+        setCurrentStake(nextStake);
+        addJournal(`✗ Lost -$${Math.abs(t.profit).toFixed(2)} — Martingale lvl ${consecutiveLossesRef.current}, next $${nextStake.toFixed(2)}`, 'loss');
       }
     });
+
+    if (!anySettled) return;
+    setActiveContractId(null);
+
+    // take profit / stop loss, using the real total of finished trades
+    const pl = openTrades
+      .filter((t) => t.is_sold && !baselineRef.current!.has(t.contract_id))
+      .reduce((sum, t) => sum + t.profit, 0);
+
+    const tp = getTakeProfit();
+    if (tp > 0 && pl >= tp && botRunningRef.current) {
+      setBotRunning(false);
+      addJournal(`🎯 Take-profit hit (+$${pl.toFixed(2)}) — bot stopped`, 'profit');
+    }
+    const sl = getStopLoss();
+    if (sl > 0 && sl < 900 && pl <= -sl && botRunningRef.current) {
+      setBotRunning(false);
+      addJournal(`Stop-loss hit ($${sl}) — bot stopped`, 'loss');
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTrades, activeContractId]);
+  }, [openTrades]);
 
   const getTradeParams = () => blocks.find((b) => b.type === 'trade_params');
   const getPurchaseBlock = () => blocks.find((b) => b.type === 'purchase');
@@ -416,7 +442,6 @@ export default function BotBuilder() {
     baselineRef.current = new Set(openTrades.map((t) => t.contract_id));
     setResetCount((c) => c + 1);
     setDetailTab('summary');
-    setBotStats({ runs: 0, wins: 0, losses: 0, totalStake: 0, totalPayout: 0, pl: 0 });
     setBotJournal([]);
     setActiveContractId(null);
     consecutiveLossesRef.current = 0;
@@ -455,7 +480,6 @@ export default function BotBuilder() {
     const stake = currentStake ?? baseStake;
     addJournal(`Placing ${derivContractType} on ${symbol} — $${stake.toFixed(2)}${consecutiveLossesRef.current > 0 ? ` (Martingale lvl ${consecutiveLossesRef.current})` : ''}`, 'buy');
     placeTrade({ symbol, contractType: derivContractType, stake, duration, durationUnit, barrier });
-    setTimeout(() => setBotStats((prev) => ({ ...prev, runs: prev.runs + 1 })), 500);
   };
 
   useEffect(() => {
@@ -500,7 +524,7 @@ export default function BotBuilder() {
 
   const reportProps = {
     botRunning,
-    botStats,
+    botStats: displayStats,
     openTrades: sessionTrades,
     activeContractId,
     botJournal,
@@ -519,9 +543,9 @@ export default function BotBuilder() {
         </button>
         <div className="flex-1 text-xs text-gray-500">
           {botRunning ? (
-            <><div className="flex justify-between mb-1"><span>Bot is running…</span><span>{botStats.runs} runs</span></div><div className="h-1 bg-gray-100 rounded overflow-hidden"><div className="h-full bg-teal-500 transition-all" style={{ width: '72%' }} /></div></>
+            <><div className="flex justify-between mb-1"><span>Bot is running…</span><span>{displayStats.runs} runs</span></div><div className="h-1 bg-gray-100 rounded overflow-hidden"><div className="h-full bg-teal-500 transition-all" style={{ width: '72%' }} /></div></>
           ) : (
-            <div className="flex justify-between"><span>Bot is not running</span><span>{botStats.runs} runs</span></div>
+            <div className="flex justify-between"><span>Bot is not running</span><span>{displayStats.runs} runs</span></div>
           )}
         </div>
       </div>
@@ -546,7 +570,7 @@ export default function BotBuilder() {
       >
         <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white flex-shrink-0">
           <div className="text-xs text-gray-500 font-medium min-w-[60px]">
-            {botRunning ? `${botStats.runs} runs` : ''}
+            {botRunning ? `${displayStats.runs} runs` : ''}
           </div>
 
           <button
@@ -601,7 +625,7 @@ export default function BotBuilder() {
           </button>
           <div className="flex-1 min-w-0 border border-gray-200 border-l-0 rounded-r-md bg-white px-3 py-1.5 flex flex-col justify-center">
             <div className="text-[13px] font-bold text-gray-900 text-center truncate mb-2">
-              {botRunning ? `Bot is running — ${botStats.runs} runs` : 'Bot is not running'}
+              {botRunning ? `Bot is running — ${displayStats.runs} runs` : 'Bot is not running'}
             </div>
             <div className="relative h-1 bg-gray-200 rounded-full">
               <div
