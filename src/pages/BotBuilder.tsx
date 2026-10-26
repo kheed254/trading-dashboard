@@ -14,6 +14,8 @@ const MARKETS = [
       'Volatility 50 (1s) Index',
       'Volatility 75 (1s) Index',
       'Volatility 100 (1s) Index',
+      'Volatility 15 (1s) Index',
+      'Volatility 90 (1s) Index',
     ],
   },
   {
@@ -84,6 +86,8 @@ const SYMBOL_MAP: Record<string, string> = {
   'Volatility 50 (1s) Index': '1HZ50V',
   'Volatility 75 (1s) Index': '1HZ75V',
   'Volatility 100 (1s) Index': '1HZ100V',
+  'Volatility 15 (1s) Index': '1HZ15V',
+  'Volatility 90 (1s) Index': '1HZ90V',
   'Volatility 10 Index': 'R_10',
   'Volatility 25 Index': 'R_25',
   'Volatility 50 Index': 'R_50',

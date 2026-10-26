@@ -18,6 +18,8 @@ export const SYMBOLS = {
   '1HZ50V': 'Volatility 50 (1s) Index',
   '1HZ75V': 'Volatility 75 (1s) Index',
   '1HZ100V': 'Volatility 100 (1s) Index',
+  '1HZ15V': 'Volatility 15 (1s) Index',
+  '1HZ90V': 'Volatility 90 (1s) Index',
   JD10: 'Jump 10 Index',
   JD25: 'Jump 25 Index',
   JD50: 'Jump 50 Index',
