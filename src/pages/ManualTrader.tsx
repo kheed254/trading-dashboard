@@ -65,6 +65,7 @@ export default function ManualTrader() {
   const [sessionPL, setSessionPL] = useState(0);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [showJournal, setShowJournal] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   // Auto-Trade
   const [autoTrade, setAutoTrade] = useState(false);
@@ -302,11 +303,11 @@ export default function ManualTrader() {
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#f4f3f1] pb-8">
-      <div className="max-w-xl mx-auto px-3 pt-3 space-y-4">
+      <div className="max-w-xl mx-auto px-3 pt-2 space-y-2 sm:pt-3 sm:space-y-4">
 
         {/* ============ MARKET CARD ============ */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 px-3 py-3 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 px-3 py-2 sm:py-3 flex items-center gap-3">
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">100</span>
           </div>
           <div className="flex-1 min-w-0">
@@ -360,8 +361,8 @@ export default function ManualTrader() {
         </div>
 
         {/* ============ DIGIT CIRCLES ============ */}
-        <div className="px-1 py-2">
-          <div className="grid grid-cols-5 gap-x-2 gap-y-6 mb-6">
+        <div className="px-1">
+          <div className="grid grid-cols-5 gap-x-2 gap-y-2 mb-2">
             {digitStats.slice(0, 5).map((d) => (
               <DigitGauge
                 key={d.digit}
@@ -372,7 +373,7 @@ export default function ManualTrader() {
               />
             ))}
           </div>
-          <div className="grid grid-cols-5 gap-x-2 gap-y-6">
+          <div className="grid grid-cols-5 gap-x-2 gap-y-2">
             {digitStats.slice(5, 10).map((d) => (
               <DigitGauge
                 key={d.digit}
@@ -386,13 +387,13 @@ export default function ManualTrader() {
         </div>
 
         {/* ============ TRADE TICKET ============ */}
-        <div className="bg-[#eeedeb] rounded-xl border border-gray-200 p-3 space-y-3">
+        <div className="bg-[#eeedeb] rounded-xl border border-gray-200 p-2 sm:p-3 space-y-2 sm:space-y-3">
 
           {/* Trade type + Digit */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowTypePicker(true)}
-              className="flex-1 flex items-center gap-3 px-3 py-3 bg-white border border-gray-200 rounded-lg text-left"
+              className="flex-1 flex items-center gap-3 px-3 py-2 sm:py-3 bg-white border border-gray-200 rounded-lg text-left"
             >
               <span className="text-lg">
                 {tradeType === 'evenodd' ? '🎯' :
@@ -408,7 +409,7 @@ export default function ManualTrader() {
             </button>
 
             {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
-              <div className="flex items-center gap-1 px-3 py-3 bg-white border border-gray-200 rounded-lg">
+              <div className="flex items-center gap-1 px-3 py-2 sm:py-3 bg-white border border-gray-200 rounded-lg">
                 <span className="text-xs text-gray-500">Digit:</span>
                 <input
                   type="number"
@@ -426,24 +427,24 @@ export default function ManualTrader() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => adjustStake(-1)}
-              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
             >
               −
             </button>
-            <div className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg py-2.5">
+            <div className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg py-1.5 sm:py-2.5">
               <input
                 type="number"
                 step="0.5"
                 min="0.35"
                 value={stake}
                 onChange={(e) => setStake(Math.max(0.35, Number(e.target.value) || 0.35))}
-                className="bg-transparent text-gray-900 font-bold text-2xl text-center outline-none w-28"
+                className="bg-transparent text-gray-900 font-bold text-xl sm:text-2xl text-center outline-none w-28"
               />
               <span className="text-gray-500 text-sm ml-2">USD</span>
             </div>
             <button
               onClick={() => adjustStake(1)}
-              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
             >
               +
             </button>
@@ -455,7 +456,7 @@ export default function ManualTrader() {
               <button
                 key={amount}
                 onClick={() => setStake(amount)}
-                className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                className={`flex-1 py-1 sm:py-1.5 rounded text-xs font-semibold transition ${
                   stake === amount
                     ? 'bg-[#4db3b0] text-white'
                     : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -466,6 +467,65 @@ export default function ManualTrader() {
             ))}
           </div>
 
+          {/* Action Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleTrade('primary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#4db3b0] text-white py-3 sm:py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{primaryLabel}</span>
+              </div>
+              <div className="bg-[#3b9a97] text-white py-1.5 sm:py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleTrade('secondary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#ff1f1f] text-white py-3 sm:py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{secondaryLabel}</span>
+              </div>
+              <div className="bg-[#d94a3d] text-white py-1.5 sm:py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+          </div>
+
+          {/* Target reached banner */}
+          {targetReached && (
+            <div className={`rounded-lg p-3 text-center ${
+              targetReached === 'tp' ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
+            }`}>
+              <span className={`text-xs font-medium ${
+                targetReached === 'tp' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
+              </span>
+            </div>
+          )}
+
+          {/* More options (folded away so the phone screen fits without scrolling) */}
+          <button
+            onClick={() => setShowMore((v) => !v)}
+            className="w-full text-xs py-2 text-gray-600 hover:text-gray-900 bg-white border border-gray-200 rounded-lg transition"
+          >
+            {showMore ? '▲ Hide options' : '▼ More options · Take Profit · Stop Loss · Auto-Trade · Journal'}
+            {!showMore && autoTrade ? '  ● Auto-Trade ON' : ''}
+          </button>
+
+          {showMore && (
+            <div className="space-y-2 sm:space-y-3">
           {/* TP/SL Row */}
           <div className="bg-white border border-gray-200 rounded-lg p-3">
             <div className="grid grid-cols-2 gap-3">
@@ -597,54 +657,6 @@ export default function ManualTrader() {
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => handleTrade('primary')}
-              disabled={buttonsDisabled}
-              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
-            >
-              <div className="bg-[#4db3b0] text-white py-4 flex items-center justify-center gap-2">
-                <span className="font-bold text-lg">{primaryLabel}</span>
-              </div>
-              <div className="bg-[#3b9a97] text-white py-2 text-xs flex items-center justify-between px-4">
-                <span>Payout</span>
-                <span className="font-bold">
-                  {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleTrade('secondary')}
-              disabled={buttonsDisabled}
-              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
-            >
-              <div className="bg-[#ff1f1f] text-white py-4 flex items-center justify-center gap-2">
-                <span className="font-bold text-lg">{secondaryLabel}</span>
-              </div>
-              <div className="bg-[#d94a3d] text-white py-2 text-xs flex items-center justify-between px-4">
-                <span>Payout</span>
-                <span className="font-bold">
-                  {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
-                </span>
-              </div>
-            </button>
-          </div>
-
-          {/* Target reached banner */}
-          {targetReached && (
-            <div className={`rounded-lg p-3 text-center ${
-              targetReached === 'tp' ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
-            }`}>
-              <span className={`text-xs font-medium ${
-                targetReached === 'tp' ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
-              </span>
-            </div>
-          )}
-
           {/* Journal Toggle */}
           <button
             onClick={() => setShowJournal(!showJournal)}
@@ -675,6 +687,8 @@ export default function ManualTrader() {
                   </div>
                 ))
               )}
+            </div>
+          )}
             </div>
           )}
         </div>
@@ -740,7 +754,7 @@ function DigitGauge({
           }}
         />
       )}
-      <div className="relative w-full max-w-[72px] aspect-square rounded-full">
+      <div className="relative w-full max-w-[52px] sm:max-w-[72px] aspect-square rounded-full">
         <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
           {/* track (coloured for most / least appearing digit) */}
           <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke={ringColor} strokeWidth="8" />
@@ -758,12 +772,12 @@ function DigitGauge({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
-          <span className="text-base font-bold text-navy">{digit}</span>
-          <span className="text-[10px] font-bold text-navy">{fmtPct(pct)}</span>
+          <span className="text-sm sm:text-base font-bold text-navy">{digit}</span>
+          <span className="text-[9px] sm:text-[10px] font-bold text-navy">{fmtPct(pct)}</span>
         </div>
       </div>
       <div
-        className={`h-4 mt-1 text-[10px] font-bold uppercase tracking-wide ${
+        className={`h-3.5 sm:h-4 mt-0.5 sm:mt-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide ${
           kind === 'high' ? 'text-teal-600' : kind === 'low' ? 'text-red-500' : ''
         }`}
       >
