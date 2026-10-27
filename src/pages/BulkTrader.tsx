@@ -1,31 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDigitStream } from '../lib/deriv';
+import { useDigitStream, useMarkets } from '../lib/deriv';
 import { computeDigitStats, computeEvenOdd } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
-const MARKET_MAP: Record<string, string> = {
-  'Volatility 10 Index': 'R_10',
-  'Volatility 25 Index': 'R_25',
-  'Volatility 50 Index': 'R_50',
-  'Volatility 75 Index': 'R_75',
-  'Volatility 100 Index': 'R_100',
-  'Volatility 10 (1s) Index': '1HZ10V',
-  'Volatility 25 (1s) Index': '1HZ25V',
-  'Volatility 30 (1s) Index': '1HZ30V',
-  'Volatility 50 (1s) Index': '1HZ50V',
-  'Volatility 75 (1s) Index': '1HZ75V',
-  'Volatility 100 (1s) Index': '1HZ100V',
-  'Volatility 15 (1s) Index': '1HZ15V',
-  'Volatility 90 (1s) Index': '1HZ90V',
-  'Jump 10 Index': 'JD10',
-  'Jump 25 Index': 'JD25',
-  'Jump 50 Index': 'JD50',
-  'Jump 75 Index': 'JD75',
-  'Jump 100 Index': 'JD100',
-};
-
-const MARKETS = Object.keys(MARKET_MAP);
 
 /* Show percentages without trailing zeros: 8.10 -> 8.1, 10.00 -> 10, 0.00 -> 0 */
 const fmtPct = (n: number) => `${parseFloat(n.toFixed(2))}%`;
@@ -98,7 +76,8 @@ export default function BulkTrader() {
   };
 
   /* ---- Live stream ---- */
-  const symbol = MARKET_MAP[marketName] as any;
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = (symbolFor(marketName) ?? 'R_100') as any;
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, numTicks);
 
   /* ---- Derived stats ---- */
@@ -263,8 +242,12 @@ export default function BulkTrader() {
             onChange={(e) => setMarketName(e.target.value)}
             className="w-full border-2 border-gray-300 rounded-lg px-3 py-2.5 text-sm font-bold text-navy bg-gray-100 outline-none focus:border-blue-400 cursor-pointer"
           >
-            {MARKETS.map((m) => (
-              <option key={m} value={m}>{m}</option>
+            {marketGroups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map((m) => (
+                  <option key={m.symbol} value={m.name}>{m.name}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

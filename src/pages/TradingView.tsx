@@ -1,30 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import * as LWC from 'lightweight-charts';
-import { DERIV_WS_URL } from '../lib/deriv';
+import { DERIV_WS_URL, useMarkets } from '../lib/deriv';
 
 /* ---------- Config ---------- */
-const MARKET_MAP: Record<string, string> = {
-  'Volatility 10 (1s) Index': '1HZ10V',
-  'Volatility 25 (1s) Index': '1HZ25V',
-  'Volatility 30 (1s) Index': '1HZ30V',
-  'Volatility 50 (1s) Index': '1HZ50V',
-  'Volatility 75 (1s) Index': '1HZ75V',
-  'Volatility 100 (1s) Index': '1HZ100V',
-  'Volatility 15 (1s) Index': '1HZ15V',
-  'Volatility 90 (1s) Index': '1HZ90V',
-  'Volatility 10 Index': 'R_10',
-  'Volatility 25 Index': 'R_25',
-  'Volatility 50 Index': 'R_50',
-  'Volatility 75 Index': 'R_75',
-  'Volatility 100 Index': 'R_100',
-  'Jump 10 Index': 'JD10',
-  'Jump 25 Index': 'JD25',
-  'Jump 50 Index': 'JD50',
-  'Jump 75 Index': 'JD75',
-  'Jump 100 Index': 'JD100',
-};
-
-const MARKETS = Object.keys(MARKET_MAP);
 
 /* Deriv candle sizes (seconds) */
 const TIMEFRAMES = [
@@ -72,7 +50,8 @@ export default function TradingView() {
   const pipRef = useRef(2);
   chartTypeRef.current = chartType;
 
-  const symbol = MARKET_MAP[marketName];
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = symbolFor(marketName) ?? 'R_100';
   const tfLabel = TIMEFRAMES.find((t) => t.g === granularity)?.label ?? '';
 
   /* ---- helpers (only use refs, so they are safe inside effects) ---- */
@@ -370,8 +349,12 @@ export default function TradingView() {
             onChange={(e) => setMarketName(e.target.value)}
             className="border border-gray-300 rounded-md px-2 py-1.5 text-sm font-bold text-gray-900 bg-white outline-none focus:border-blue-500 cursor-pointer max-w-[180px]"
           >
-            {MARKETS.map((m) => (
-              <option key={m} value={m}>{m}</option>
+            {marketGroups.map((g) => (
+              <optgroup key={g.group} label={g.group}>
+                {g.options.map((m) => (
+                  <option key={m.symbol} value={m.name}>{m.name}</option>
+                ))}
+              </optgroup>
             ))}
           </select>
 

@@ -1,31 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDigitStream } from '../lib/deriv';
+import { useDigitStream, useMarkets } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
-const MARKET_MAP: Record<string, string> = {
-  'Volatility 10 (1s) Index': '1HZ10V',
-  'Volatility 25 (1s) Index': '1HZ25V',
-  'Volatility 30 (1s) Index': '1HZ30V',
-  'Volatility 50 (1s) Index': '1HZ50V',
-  'Volatility 75 (1s) Index': '1HZ75V',
-  'Volatility 100 (1s) Index': '1HZ100V',
-  'Volatility 15 (1s) Index': '1HZ15V',
-  'Volatility 90 (1s) Index': '1HZ90V',
-  'Volatility 10 Index': 'R_10',
-  'Volatility 25 Index': 'R_25',
-  'Volatility 50 Index': 'R_50',
-  'Volatility 75 Index': 'R_75',
-  'Volatility 100 Index': 'R_100',
-  'Jump 10 Index': 'JD10',
-  'Jump 25 Index': 'JD25',
-  'Jump 50 Index': 'JD50',
-  'Jump 75 Index': 'JD75',
-  'Jump 100 Index': 'JD100',
-};
-
-const MARKETS = Object.keys(MARKET_MAP);
 
 /* Show percentages without trailing zeros: 8.10 -> 8.1, 10.00 -> 10, 0.00 -> 0 */
 const fmtPct = (n: number) => `${parseFloat(n.toFixed(2))}%`;
@@ -84,7 +62,8 @@ export default function ManualTrader() {
 
   const { authorized, placeTrade, subscribeProposal, unsubscribeProposal, openTrades } = useAuthWs();
 
-  const symbol = MARKET_MAP[marketName] as any;
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = (symbolFor(marketName) ?? 'R_100') as any;
 
   /* ---- Live stream ---- */
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, 1000);
@@ -318,8 +297,12 @@ export default function ManualTrader() {
               onChange={(e) => setMarketName(e.target.value)}
               className="font-bold text-gray-900 bg-transparent outline-none cursor-pointer text-base w-full truncate"
             >
-              {MARKETS.map((m) => (
-                <option key={m} value={m} className="bg-white text-gray-900">{m}</option>
+              {marketGroups.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.options.map((m) => (
+                    <option key={m.symbol} value={m.name} className="bg-white text-gray-900">{m.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">

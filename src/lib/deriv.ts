@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { lastDigit } from './digitStats';
 
 /* ---------- Config ---------- */
@@ -318,4 +318,154 @@ export function useDigitStream(
   }, [windowSize]);
 
   return { price, currentDigit, digits, connected, error };
+}
+
+/* ================================================================
+   MARKET LIST — loaded live from Deriv (active_symbols), so every
+   market Deriv offers shows up with its correct name and code.
+   Falls back to a built-in list if Deriv can't be reached.
+   ================================================================ */
+export type MarketItem = { symbol: string; name: string; group: string };
+export type MarketGroup = { group: string; options: MarketItem[] };
+
+const GROUP_ORDER = [
+  'Continuous Indices',
+  'Crash/Boom Indices',
+  'Daily Reset Indices',
+  'Jump Indices',
+  'Step Indices',
+  'Range Break Indices',
+];
+
+function groupLabel(submarket: unknown): string {
+  const key = String(submarket ?? '').toLowerCase();
+  if (key.includes('daily')) return 'Daily Reset Indices';
+  if (key.includes('random')) return 'Continuous Indices';
+  if (key.includes('crash') || key.includes('boom')) return 'Crash/Boom Indices';
+  if (key.includes('jump')) return 'Jump Indices';
+  if (key.includes('step')) return 'Step Indices';
+  if (key.includes('range')) return 'Range Break Indices';
+  return key ? key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Other';
+}
+
+/* built-in list used until Deriv answers (or if it never does) */
+const FALLBACK_MARKETS: MarketItem[] = (Object.entries(SYMBOLS) as [string, string][]).map(
+  ([symbol, name]) => ({
+    symbol,
+    name,
+    group: symbol.startsWith('JD') ? 'Jump Indices' : 'Continuous Indices',
+  })
+);
+
+function parseActiveSymbols(raw: any[]): MarketItem[] {
+  const all: { item: MarketItem; synthetic: boolean }[] = [];
+  raw.forEach((s) => {
+    const symbol = s.underlying_symbol ?? s.symbol;
+    if (!symbol) return;
+    if (s.is_trading_suspended === 1) return;
+    const name = s.underlying_symbol_name ?? s.display_name ?? symbol;
+    const market = String(s.market ?? '');
+    all.push({
+      item: { symbol: String(symbol), name: String(name), group: groupLabel(s.submarket) },
+      synthetic: /synthetic|derived/i.test(market),
+    });
+  });
+  const synthetic = all.filter((x) => x.synthetic).map((x) => x.item);
+  // only Deriv's own indices (like the reference site); if the market names are
+  // not recognised, show everything instead of showing nothing
+  return synthetic.length ? synthetic : all.map((x) => x.item);
+}
+
+let cachedMarkets: MarketItem[] | null = null;
+let inflightMarkets: Promise<MarketItem[]> | null = null;
+
+function loadMarkets(): Promise<MarketItem[]> {
+  if (cachedMarkets) return Promise.resolve(cachedMarkets);
+  if (inflightMarkets) return inflightMarkets;
+
+  inflightMarkets = new Promise<{ list: MarketItem[]; ok: boolean }>((resolve) => {
+    let finished = false;
+    const ws = new WebSocket(DERIV_WS_URL);
+    const finish = (list: MarketItem[], ok: boolean) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      resolve({ list, ok });
+    };
+    const timer = setTimeout(() => finish(FALLBACK_MARKETS, false), 8000);
+
+    ws.onopen = () => ws.send(JSON.stringify({ active_symbols: 'brief' }));
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.msg_type === 'active_symbols' && Array.isArray(data.active_symbols)) {
+          const list = parseActiveSymbols(data.active_symbols);
+          list.length ? finish(list, true) : finish(FALLBACK_MARKETS, false);
+        } else if (data.error) {
+          finish(FALLBACK_MARKETS, false);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    ws.onerror = () => finish(FALLBACK_MARKETS, false);
+  }).then(({ list, ok }) => {
+    if (ok) cachedMarkets = list;
+    inflightMarkets = null;
+    return list;
+  });
+
+  return inflightMarkets;
+}
+
+function buildGroups(items: MarketItem[]): MarketGroup[] {
+  const byGroup = new Map<string, MarketItem[]>();
+  items.forEach((i) => {
+    if (!byGroup.has(i.group)) byGroup.set(i.group, []);
+    byGroup.get(i.group)!.push(i);
+  });
+  const rank = (g: string) => {
+    const i = GROUP_ORDER.indexOf(g);
+    return i < 0 ? 99 : i;
+  };
+  return Array.from(byGroup.keys())
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((g) => ({
+      group: g,
+      options: byGroup
+        .get(g)!
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    }));
+}
+
+/**
+ * groups      -> markets split into sections, ready for a dropdown (<optgroup>)
+ * symbolFor() -> turns a market name into the code Deriv needs (or undefined)
+ */
+export function useMarkets() {
+  const [items, setItems] = useState<MarketItem[]>(cachedMarkets ?? FALLBACK_MARKETS);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadMarkets().then((list) => {
+      if (!cancelled) setItems(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const groups = useMemo(() => buildGroups(items), [items]);
+
+  const symbolFor = (name: string): string | undefined =>
+    items.find((i) => i.name === name)?.symbol ??
+    FALLBACK_MARKETS.find((i) => i.name === name)?.symbol;
+
+  return { groups, items, symbolFor };
 }

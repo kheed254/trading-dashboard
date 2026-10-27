@@ -1,30 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useDigitStream } from '../lib/deriv';
+import { useDigitStream, useMarkets } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 
 /* ---------- Config ---------- */
-const MARKET_MAP: Record<string, string> = {
-  'Volatility 10 (1s) Index': '1HZ10V',
-  'Volatility 25 (1s) Index': '1HZ25V',
-  'Volatility 30 (1s) Index': '1HZ30V',
-  'Volatility 50 (1s) Index': '1HZ50V',
-  'Volatility 75 (1s) Index': '1HZ75V',
-  'Volatility 100 (1s) Index': '1HZ100V',
-  'Volatility 15 (1s) Index': '1HZ15V',
-  'Volatility 90 (1s) Index': '1HZ90V',
-  'Volatility 10 Index': 'R_10',
-  'Volatility 25 Index': 'R_25',
-  'Volatility 50 Index': 'R_50',
-  'Volatility 75 Index': 'R_75',
-  'Volatility 100 Index': 'R_100',
-  'Jump 10 Index': 'JD10',
-  'Jump 25 Index': 'JD25',
-  'Jump 50 Index': 'JD50',
-  'Jump 75 Index': 'JD75',
-  'Jump 100 Index': 'JD100',
-};
-
-const MARKETS = Object.keys(MARKET_MAP);
 
 /* Show percentages without trailing zeros: 8.10 -> 8.1, 10.00 -> 10, 0.00 -> 0 */
 const fmtPct = (n: number) => `${parseFloat(n.toFixed(2))}%`;
@@ -120,7 +98,8 @@ function DcirclesTab() {
   const [ouTarget, setOuTarget] = useState(5);
   const [mdTarget, setMdTarget] = useState(5);
 
-  const symbol = MARKET_MAP[marketName] as any;
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = (symbolFor(marketName) ?? 'R_100') as any;
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, ticksWindow);
 
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
@@ -238,7 +217,11 @@ function DcirclesTab() {
           onChange={(e) => setMarketName(e.target.value)}
           className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm bg-white outline-none focus:border-blue-500"
         >
-          {MARKETS.map((m) => (<option key={m} value={m}>{m}</option>))}
+          {marketGroups.map((g) => (
+            <optgroup key={g.group} label={g.group}>
+              {g.options.map((m) => (<option key={m.symbol} value={m.name}>{m.name}</option>))}
+            </optgroup>
+          ))}
         </select>
       </div>
 
@@ -529,7 +512,8 @@ function SignalsTab() {
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const symbol = MARKET_MAP[marketName] as any;
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = (symbolFor(marketName) ?? 'R_100') as any;
   // POLISH #11: grab `connected` from the hook
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, 1000);
 
@@ -651,7 +635,11 @@ function SignalsTab() {
                 backgroundSize: '20px',
               }}
             >
-              {MARKETS.map((m) => (<option key={m} value={m} style={{ background: '#0a0a0a' }}>{m}</option>))}
+              {marketGroups.map((g) => (
+                <optgroup key={g.group} label={g.group} style={{ background: '#0a0a0a' }}>
+                  {g.options.map((m) => (<option key={m.symbol} value={m.name} style={{ background: '#0a0a0a' }}>{m.name}</option>))}
+                </optgroup>
+              ))}
             </select>
           </div>
 

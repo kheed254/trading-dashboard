@@ -2,46 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveBot, loadBot, formatAgo, saveNamedBot, summarizeBot } from '../lib/storage';
 import QuickStrategyModal from '../components/QuickStrategyModal';
 import { useAuthWs } from '../lib/auth-ws-context';
+import { useMarkets } from '../lib/deriv';
 import { useBotStatus } from '../lib/bot-status';
 
-const MARKETS = [
-  {
-    group: 'Derived › 1-Second Indices',
-    options: [
-      'Volatility 10 (1s) Index',
-      'Volatility 25 (1s) Index',
-      'Volatility 30 (1s) Index',
-      'Volatility 50 (1s) Index',
-      'Volatility 75 (1s) Index',
-      'Volatility 100 (1s) Index',
-      'Volatility 15 (1s) Index',
-      'Volatility 90 (1s) Index',
-    ],
-  },
-  {
-    group: 'Derived › Standard Indices',
-    options: [
-      'Volatility 10 Index',
-      'Volatility 25 Index',
-      'Volatility 50 Index',
-      'Volatility 75 Index',
-      'Volatility 100 Index',
-    ],
-  },
-  {
-    group: 'Derived › Jump Indices',
-    options: [
-      'Jump 10 Index',
-      'Jump 25 Index',
-      'Jump 50 Index',
-      'Jump 75 Index',
-      'Jump 100 Index',
-    ],
-  },
-  {
-    group: 'Derived › Daily Reset Indices',
-    options: ['Bull Market Index', 'Bear Market Index'],
-  },
+/* Deriv's own indices come live from Deriv (see useMarkets). These two groups are added on top. */
+const EXTRA_MARKETS = [
   { group: 'Forex', options: ['EUR/USD', 'GBP/USD', 'USD/JPY'] },
   { group: 'Cryptocurrencies', options: ['BTC/USD', 'ETH/USD'] },
 ];
@@ -254,6 +219,7 @@ export default function BotBuilder() {
   const [showWhatsThis, setShowWhatsThis] = useState(false);
 
   const { authorized, placeTrade, openTrades } = useAuthWs();
+  const { symbolFor } = useMarkets();
 
   // The report only shows trades made after opening this page (or after Reset)
   const [resetCount, setResetCount] = useState(0);
@@ -467,7 +433,7 @@ export default function BotBuilder() {
     const tp = getTradeParams();
     const purchase = getPurchaseBlock();
     const market = tp?.market || 'Volatility 100 (1s) Index';
-    const symbol = SYMBOL_MAP[market];
+    const symbol = symbolFor(market) ?? SYMBOL_MAP[market];
     if (!symbol) { addJournal(`Unknown market: ${market}`, 'loss'); return; }
     const tradeType = tp?.tradeType || 'Up/Down › Rise/Fall';
     const contractType = tp?.contractType || 'Both';
@@ -853,6 +819,11 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
 /* ---------- BlockRenderer ---------- */
 function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: Block; index: number; onToggle: () => void; onDelete: () => void; onUpdate: (patch: Partial<Block>) => void }) {
   const label = BLOCK_LABELS[block.type];
+  const { groups: liveGroups } = useMarkets();
+  const marketGroups = [
+    ...liveGroups.map((g) => ({ group: g.group, options: g.options.map((o) => o.name) })),
+    ...EXTRA_MARKETS,
+  ];
   const contractTypeOptions = getContractTypeOptions(block.tradeType || '');
   const showDigitInput = needsDigitBarrier(block.tradeType || '') && block.contractType !== 'Both' && (block.contractType === 'Matches' || block.contractType === 'Differs' || block.contractType === 'Over' || block.contractType === 'Under');
 
@@ -866,7 +837,7 @@ function BlockRenderer({ block, index, onToggle, onDelete, onUpdate }: { block: 
         <div className="bg-white border-l-4 border-[#0b3d91] rounded-b-md rounded-tr-md p-3 md:p-4 mb-4 w-fit max-w-full shadow-sm text-xs md:text-sm">
           {block.type === 'trade_params' && (
             <div className="space-y-2">
-              <SelectField label="Market" value={block.market ?? ''} onChange={(v) => onUpdate({ market: v })} groups={MARKETS} />
+              <SelectField label="Market" value={block.market ?? ''} onChange={(v) => onUpdate({ market: v })} groups={marketGroups} />
               <SelectField
                 label="Trade Type"
                 value={block.tradeType ?? ''}
