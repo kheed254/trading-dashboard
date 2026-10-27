@@ -463,7 +463,7 @@ export default function BulkTrader() {
       </div>
 
       {/* REPORT PANEL (right side on desktop, below on phones) */}
-      <div className="w-full lg:w-80 lg:shrink-0 mt-2 lg:mt-0">
+      <div className="hidden lg:block lg:w-80 lg:shrink-0">
         <ReportPanel trades={sessionTrades} journal={journal} onReset={resetReport} />
       </div>
     </main>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { startDerivLogin, clearAccessToken } from '../lib/auth';
 import { useTicks } from '../lib/deriv';
@@ -144,10 +144,28 @@ export default function Layout() {
   const navigate = useNavigate();
 
   const { price: livePrice, connected: liveConnected } = useTicks('1HZ100V');
-  const { authorized, user, switchAccount } = useAuthWs();
+  const { authorized, user, switchAccount, openTrades } = useAuthWs();
 
   // On the public landing page, hide the app tabs for visitors who are not logged in
   const hideNav = location.pathname === '/' && !authorized;
+
+  /* ---- Session report for the collapsible strip above the Run bar ---- */
+  const [resetCount, setResetCount] = useState(0);
+  const baselineRef = useRef<Set<number> | null>(null);
+  if (baselineRef.current === null) {
+    baselineRef.current = new Set(openTrades.map((t) => t.contract_id));
+  }
+  const sessionTrades = useMemo(
+    () => openTrades.filter((t) => !baselineRef.current!.has(t.contract_id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [openTrades, resetCount]
+  );
+  const resetReport = () => {
+    baselineRef.current = new Set(openTrades.map((t) => t.contract_id));
+    setResetCount((c) => c + 1);
+  };
+  // Bot Builder has its own (bot-specific) strip, so don't show a second one there
+  const showReportDock = !hideNav && location.pathname !== '/bot_builder';
   const { status: botStatus } = useBotStatus();
 
   const tab: 'real' | 'demo' = activeTab ?? (user?.isVirtual ? 'demo' : 'real');
@@ -372,9 +390,12 @@ export default function Layout() {
         `}</style>
       </header>
 
-      <div className={`flex-1 ${hideNav ? '' : 'pb-20'} md:pb-0`}>
+      <div className={`flex-1 ${hideNav ? '' : showReportDock ? 'pb-36' : 'pb-20'} md:pb-0`}>
         <Outlet />
       </div>
+
+      {/* ===== COLLAPSIBLE REPORT STRIP (mobile) — same as on the Bot Builder ===== */}
+      {showReportDock && <ReportDock trades={sessionTrades} onReset={resetReport} />}
 
       {/* ===== BOTTOM DOCK (mobile) — same look as the Bot Builder run bar ===== */}
       {!hideNav && (
@@ -553,6 +574,332 @@ function GlobalAiButton() {
         AI
       </button>
       {open && <EntryScanner onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/* ================================================================
+   REPORT DOCK — collapsible Summary / Transactions / Journal strip
+   (phones only). Shows every trade made since you opened the site,
+   from any page, and has a Reset button.
+   ================================================================ */
+type DockTrade = {
+  contract_id: number;
+  symbol: string;
+  contract_type: string;
+  buy_price: number;
+  payout: number;
+  profit: number;
+  current_spot: number;
+  entry_spot: number;
+  is_sold: boolean;
+  entry_time?: number;
+  exit_time?: number;
+  entry_display?: string;
+  exit_display?: string;
+};
+
+function DockStat({ label, value, color = 'text-gray-600' }: { label: string; value: string; color?: string }) {
+  return (
+    <div>
+      <div className="text-gray-900 font-bold text-[11px]">{label}</div>
+      <div className={`font-medium mt-1 text-xs ${color}`}>{value}</div>
+    </div>
+  );
+}
+
+function ReportDock({ trades, onReset }: { trades: DockTrade[]; onReset: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<'summary' | 'transactions' | 'journal'>('summary');
+
+  const stats = useMemo(() => {
+    let won = 0, lost = 0, stake = 0, payout = 0, pl = 0;
+    trades.forEach((t) => {
+      stake += t.buy_price;
+      if (t.is_sold) {
+        pl += t.profit;
+        if (t.profit > 0) {
+          won++;
+          payout += t.buy_price + t.profit;
+        } else {
+          lost++;
+        }
+      }
+    });
+    return { runs: trades.length, won, lost, stake, payout, pl };
+  }, [trades]);
+
+  const journal = useMemo(
+    () =>
+      trades.map((t) => {
+        const ts = t.is_sold ? t.exit_time ?? t.entry_time : t.entry_time;
+        return {
+          id: t.contract_id,
+          time: ts ? new Date(ts * 1000).toLocaleTimeString() : '',
+          text: t.is_sold
+            ? `${t.profit > 0 ? '✓ Won' : '✗ Lost'} ${t.profit >= 0 ? '+' : ''}$${t.profit.toFixed(2)} — ${t.contract_type} (stake $${t.buy_price.toFixed(2)})`
+            : `Placed ${t.contract_type} — $${t.buy_price.toFixed(2)}`,
+          kind: t.is_sold ? (t.profit > 0 ? 'profit' : 'loss') : 'buy',
+        };
+      }),
+    [trades]
+  );
+
+  const last = trades[0];
+
+  const downloadCsv = () => {
+    const rows = [
+      ['contract_id', 'symbol', 'type', 'entry_spot', 'exit_spot', 'buy_price', 'profit'],
+      ...trades.map((t) => [
+        t.contract_id,
+        t.symbol,
+        t.contract_type,
+        t.entry_display ?? (t.entry_spot || ''),
+        t.is_sold ? t.exit_display ?? (t.current_spot || '') : '',
+        t.buy_price.toFixed(2),
+        t.is_sold ? t.profit.toFixed(2) : '',
+      ]),
+    ];
+    const csv = rows.map((r) => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'stingerfx-transactions.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <>
+      {open && (
+        <div className="md:hidden fixed inset-0 bg-black/30 z-20" onClick={() => setOpen(false)} />
+      )}
+
+      <div
+        className={`md:hidden fixed left-0 right-0 bottom-[64px] bg-white flex flex-col shadow-[0_-2px_6px_rgba(0,0,0,0.08)] ${
+          open ? 'top-14 z-[45]' : 'h-[56px] z-30'
+        }`}
+      >
+        {/* strip: runs · collapse arrow · Reset */}
+        <div className="relative flex items-center justify-between px-3 py-2.5 border-b border-gray-100 bg-white flex-shrink-0">
+          <div className="text-xs text-gray-500 font-medium min-w-[60px]">
+            {stats.runs > 0 ? `${stats.runs} run${stats.runs === 1 ? '' : 's'}` : ''}
+          </div>
+
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="absolute left-1/2 -translate-x-1/2 w-10 h-10 flex items-center justify-center text-gray-700"
+            title={open ? 'Collapse report' : 'Expand report'}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className={`w-6 h-6 transition-transform ${open ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M18 15l-6-6-6 6" />
+            </svg>
+          </button>
+
+          <button
+            onClick={onReset}
+            className="text-sm px-4 py-1.5 border border-gray-400 rounded-md font-bold text-gray-900 bg-white"
+          >
+            Reset
+          </button>
+        </div>
+
+        {open && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* tabs */}
+            <div className="flex border-b border-gray-200 text-sm bg-white flex-shrink-0">
+              {(['summary', 'transactions', 'journal'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setTab(k)}
+                  className={`flex-1 py-3 capitalize text-center ${
+                    tab === k
+                      ? 'border-b-2 border-blue-500 text-gray-900 font-bold'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {tab === 'summary' && (
+                <div className="p-4">
+                  {!last ? (
+                    <div className="text-center text-sm text-gray-800 leading-snug py-6">
+                      When you&rsquo;re ready to trade, place a trade. You&rsquo;ll be able to track
+                      your performance here.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs text-gray-500">{last.symbol}</div>
+                        <div
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            last.is_sold
+                              ? last.profit > 0
+                                ? 'bg-green-50 text-green-700'
+                                : 'bg-red-50 text-red-700'
+                              : 'bg-teal-50 text-teal-700'
+                          }`}
+                        >
+                          {last.is_sold ? (last.profit > 0 ? 'WON' : 'LOST') : 'LIVE'}
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-navy mb-3">{last.contract_type}</div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-4">
+                        <div
+                          className={`h-full transition-all ${
+                            last.is_sold
+                              ? last.profit > 0
+                                ? 'bg-green-500'
+                                : 'bg-red-500'
+                              : 'bg-teal-500 animate-pulse'
+                          }`}
+                          style={{ width: last.is_sold ? '100%' : '45%' }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <div className="text-gray-500">Stake</div>
+                          <div className="font-mono font-semibold text-navy mt-0.5">
+                            {last.buy_price.toFixed(2)} USD
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-gray-500">{last.is_sold ? 'Profit' : 'Payout'}</div>
+                          <div
+                            className={`font-mono font-semibold mt-0.5 ${
+                              last.is_sold ? (last.profit >= 0 ? 'text-green-600' : 'text-red-600') : 'text-navy'
+                            }`}
+                          >
+                            {last.is_sold
+                              ? `${last.profit >= 0 ? '+' : ''}${last.profit.toFixed(2)}`
+                              : last.payout.toFixed(2)}{' '}
+                            USD
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {tab === 'transactions' && (
+                <div>
+                  <div className="flex gap-2 px-4 py-3 border-b border-gray-100">
+                    <button
+                      onClick={downloadCsv}
+                      disabled={!trades.length}
+                      className="text-xs px-4 py-2 border border-gray-300 rounded font-medium text-gray-700 disabled:opacity-40"
+                    >
+                      Download
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-[70px_1fr_1fr] gap-2 px-4 py-3 text-[11px] text-gray-700 font-semibold border-b border-gray-100">
+                    <div>Type</div>
+                    <div>Entry/Exit spot</div>
+                    <div className="text-right">Buy price and P/L</div>
+                  </div>
+                  {trades.length === 0 ? (
+                    <div className="text-center text-gray-400 text-xs py-10">No transactions yet</div>
+                  ) : (
+                    trades.map((t) => {
+                      const won = t.is_sold && t.profit > 0;
+                      const lost = t.is_sold && t.profit <= 0;
+                      return (
+                        <div key={t.contract_id} className="border-b border-gray-100 py-2.5">
+                          <div className="grid grid-cols-[70px_1fr_1fr] gap-2 px-4 items-center">
+                            <div className="text-[10px] font-medium text-gray-700 break-all">{t.contract_type}</div>
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-red-500 text-base leading-none">◉</span>
+                              <span className="font-mono text-gray-700">
+                                {t.entry_display ?? (t.entry_spot || '—')}
+                              </span>
+                            </div>
+                            <div className="text-right text-[11px] font-mono text-gray-700">
+                              {t.buy_price.toFixed(2)} USD
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-[70px_1fr_1fr] gap-2 px-4 items-center mt-1">
+                            <div />
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-gray-400 text-base leading-none">◯</span>
+                              <span className="font-mono text-gray-700">
+                                {t.is_sold ? t.exit_display ?? (t.current_spot || '—') : '…'}
+                              </span>
+                            </div>
+                            <div
+                              className={`text-right text-[11px] font-mono font-semibold ${
+                                won ? 'text-green-600' : lost ? 'text-red-600' : 'text-gray-400'
+                              }`}
+                            >
+                              {t.is_sold ? `${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)} USD` : 'open'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {tab === 'journal' && (
+                <div className="p-3 text-xs">
+                  {journal.length === 0 ? (
+                    <div className="text-center text-gray-400 py-8">Journal empty</div>
+                  ) : (
+                    journal.map((j) => (
+                      <div key={j.id} className="border-b border-gray-50 py-2 last:border-0">
+                        <div className="text-[9px] text-gray-400 font-mono">{j.time}</div>
+                        <div
+                          className={`mt-0.5 ${
+                            j.kind === 'profit'
+                              ? 'text-green-600'
+                              : j.kind === 'loss'
+                              ? 'text-red-600'
+                              : 'text-navy'
+                          }`}
+                        >
+                          {j.text}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* totals */}
+            <div className="border-t border-gray-200 bg-gray-100 px-4 pt-3 pb-3 flex-shrink-0">
+              <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                <DockStat label="Total stake" value={`${stats.stake.toFixed(2)} USD`} />
+                <DockStat label="Total payout" value={`${stats.payout.toFixed(2)} USD`} />
+                <DockStat label="No. of runs" value={String(stats.runs)} />
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <DockStat label="Contracts lost" value={String(stats.lost)} />
+                <DockStat label="Contracts won" value={String(stats.won)} />
+                <DockStat
+                  label="Total profit/loss"
+                  value={`${stats.pl.toFixed(2)} USD`}
+                  color={stats.pl > 0 ? 'text-green-600' : stats.pl < 0 ? 'text-red-600' : 'text-gray-600'}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }
