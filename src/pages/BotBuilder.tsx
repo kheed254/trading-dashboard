@@ -519,7 +519,7 @@ export default function BotBuilder() {
           )}
         </div>
       </div>
-      <ReportBody {...reportProps} />
+      <ReportBody {...reportProps} onReset={handleReset} />
     </>
   );
 
@@ -681,7 +681,7 @@ export default function BotBuilder() {
 }
 
 /* ---------- ReportBody ---------- */
-function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJournal, detailTab, setDetailTab, consecutiveLosses, currentStake, onWhatsThisClick }: {
+function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJournal, detailTab, setDetailTab, consecutiveLosses, currentStake, onWhatsThisClick, onReset }: {
   botRunning: boolean;
   botStats: { runs: number; wins: number; losses: number; totalStake: number; totalPayout: number; pl: number };
   openTrades: any[];
@@ -692,6 +692,7 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
   consecutiveLosses: number;
   currentStake: number | null;
   onWhatsThisClick: () => void;
+  onReset?: () => void;
 }) {
   const active = openTrades.find((t) => t.contract_id === activeContractId && !t.is_sold);
   const last = openTrades[0];
@@ -811,6 +812,14 @@ function ReportBody({ botRunning, botStats, openTrades, activeContractId, botJou
           <Stat label="Contracts won" value={String(botStats.wins)} />
           <Stat label="Total profit/loss" value={`${botStats.pl.toFixed(2)} USD`} highlight={botStats.pl > 0 ? 'green' : botStats.pl < 0 ? 'red' : 'none'} />
         </div>
+        {onReset && (
+          <button
+            onClick={onReset}
+            className="mt-3 w-full text-sm font-bold text-gray-900 bg-white border border-gray-300 rounded-md py-2 hover:bg-gray-50"
+          >
+            Reset
+          </button>
+        )}
       </div>
     </>
   );
