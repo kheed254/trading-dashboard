@@ -310,6 +310,7 @@ export default function BotBuilder() {
         setCurrentStake(getBaseStake());
         setMobileReportOpen(true);
       }
+      botRunningRef.current = next;
       setBotRunning(next);
       addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
     };
@@ -359,11 +360,13 @@ export default function BotBuilder() {
 
     const tp = getTakeProfit();
     if (tp > 0 && pl >= tp && botRunningRef.current) {
+      botRunningRef.current = false;
       setBotRunning(false);
       addJournal(`🎯 Take-profit hit (+$${pl.toFixed(2)}) — bot stopped`, 'profit');
     }
     const sl = getStopLoss();
     if (sl > 0 && sl < 900 && pl <= -sl && botRunningRef.current) {
+      botRunningRef.current = false;
       setBotRunning(false);
       addJournal(`Stop-loss hit ($${sl}) — bot stopped`, 'loss');
     }
@@ -430,6 +433,7 @@ export default function BotBuilder() {
   };
 
   const placeOneTrade = () => {
+    if (!botRunningRef.current) return; // stopped — never start a new trade
     const tp = getTradeParams();
     const purchase = getPurchaseBlock();
     const market = tp?.market || 'Volatility 100 (1s) Index';
@@ -455,6 +459,7 @@ export default function BotBuilder() {
   useEffect(() => {
     if (!botRunning || activeContractId || !authorized) return;
     const delay = setTimeout(() => {
+      if (!botRunningRef.current) return; // stopped while waiting
       const newestOpen = openTrades.find((t) => !t.is_sold);
       if (newestOpen) { setActiveContractId(newestOpen.contract_id); return; }
       placeOneTrade();
@@ -472,8 +477,17 @@ export default function BotBuilder() {
       setCurrentStake(getBaseStake());
       setMobileReportOpen(true);
     }
+    botRunningRef.current = next;
     setBotRunning(next);
-    addJournal(next ? 'Bot started' : 'Bot stopped by user', 'info');
+    const stillOpen = sessionTrades.some((t) => !t.is_sold);
+    addJournal(
+      next
+        ? 'Bot started'
+        : stillOpen
+        ? 'Bot stopped — the trade already placed will still finish'
+        : 'Bot stopped by user',
+      'info'
+    );
   };
 
   const renderSidebar = () => (
