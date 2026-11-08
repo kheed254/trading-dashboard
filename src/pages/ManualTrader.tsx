@@ -1,24 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useDigitStream } from '../lib/deriv';
+import { useDigitStream, useMarkets } from '../lib/deriv';
 import { computeDigitStats } from '../lib/digitStats';
 import { useAuthWs } from '../lib/auth-ws-context';
 
 /* ---------- Config ---------- */
-const MARKET_MAP: Record<string, string> = {
-  'Volatility 10 (1s) Index': '1HZ10V',
-  'Volatility 25 (1s) Index': '1HZ25V',
-  'Volatility 30 (1s) Index': '1HZ30V',
-  'Volatility 50 (1s) Index': '1HZ50V',
-  'Volatility 75 (1s) Index': '1HZ75V',
-  'Volatility 100 (1s) Index': '1HZ100V',
-  'Volatility 10 Index': 'R_10',
-  'Volatility 25 Index': 'R_25',
-  'Volatility 50 Index': 'R_50',
-  'Volatility 75 Index': 'R_75',
-  'Volatility 100 Index': 'R_100',
-};
 
-const MARKETS = Object.keys(MARKET_MAP);
+/* Show percentages without trailing zeros: 8.10 -> 8.1, 10.00 -> 10, 0.00 -> 0 */
+const fmtPct = (n: number) => `${parseFloat(n.toFixed(2))}%`;
 
 type TradeTypeKey =
   | 'evenodd'
@@ -57,12 +45,15 @@ export default function ManualTrader() {
   const [sessionPL, setSessionPL] = useState(0);
   const [journal, setJournal] = useState<JournalEntry[]>([]);
   const [showJournal, setShowJournal] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   // Auto-Trade
   const [autoTrade, setAutoTrade] = useState(false);
   const [autoDirection, setAutoDirection] = useState<'primary' | 'secondary'>('primary');
   const [autoDelay, setAutoDelay] = useState(3);
   const autoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoTradeRef = useRef(false);
+  autoTradeRef.current = autoTrade;
 
   // Live payouts
   const [primaryPayout, setPrimaryPayout] = useState<number | null>(null);
@@ -73,7 +64,8 @@ export default function ManualTrader() {
 
   const { authorized, placeTrade, subscribeProposal, unsubscribeProposal, openTrades } = useAuthWs();
 
-  const symbol = MARKET_MAP[marketName] as any;
+  const { groups: marketGroups, symbolFor } = useMarkets();
+  const symbol = (symbolFor(marketName) ?? 'R_100') as any;
 
   /* ---- Live stream ---- */
   const { price, currentDigit, digits, connected } = useDigitStream(symbol, 1000);
@@ -97,16 +89,17 @@ export default function ManualTrader() {
   /* ---- Digit stats ---- */
   const digitStats = useMemo(() => computeDigitStats(digits), [digits]);
 
-  /* ---- Highest / lowest digits for circle colours ---- */
-  const { highestDigit, lowestDigits, maxPct } = useMemo(() => {
-    if (!digits.length) return { highestDigit: -1, lowestDigits: [] as number[], maxPct: 0 };
-    const sorted = [...digitStats].sort((a, b) => b.pct - a.pct);
-    const asc = [...digitStats].sort((a, b) => a.pct - b.pct);
-    return {
-      highestDigit: sorted[0].digit,
-      lowestDigits: [asc[0].digit, asc[1].digit],
-      maxPct: sorted[0].pct,
-    };
+  /* ---- Most / least appearing digit for circle colours ---- */
+  const { highestDigit, lowestDigit } = useMemo(() => {
+    if (digits.length < 20) return { highestDigit: -1, lowestDigit: -1 };
+    let hi = digitStats[0];
+    let lo = digitStats[0];
+    digitStats.forEach((d) => {
+      if (d.pct > hi.pct) hi = d;
+      if (d.pct < lo.pct) lo = d;
+    });
+    if (hi.pct === lo.pct) return { highestDigit: -1, lowestDigit: -1 };
+    return { highestDigit: hi.digit, lowestDigit: lo.digit };
   }, [digitStats, digits.length]);
 
   /* ---- Journal helper ---- */
@@ -255,8 +248,9 @@ export default function ManualTrader() {
     }
 
     const run = async () => {
-      if (!autoTrade || targetReached || isTrading) return;
+      if (!autoTradeRef.current || targetReached || isTrading) return; // switched off — do nothing
       await handleTrade(autoDirection);
+      if (!autoTradeRef.current) return; // switched off while placing — don't schedule another
       autoTimerRef.current = setTimeout(run, autoDelay * 1000);
     };
 
@@ -293,11 +287,11 @@ export default function ManualTrader() {
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-[#f4f3f1] pb-8">
-      <div className="max-w-xl mx-auto px-3 pt-3 space-y-4">
+      <div className="max-w-xl mx-auto px-3 pt-2 space-y-2 sm:pt-3 sm:space-y-4">
 
         {/* ============ MARKET CARD ============ */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-100 px-3 py-3 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-100 px-3 py-2 sm:py-3 flex items-center gap-3">
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-lg bg-gradient-to-br from-teal-500 to-blue-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">100</span>
           </div>
           <div className="flex-1 min-w-0">
@@ -306,8 +300,12 @@ export default function ManualTrader() {
               onChange={(e) => setMarketName(e.target.value)}
               className="font-bold text-gray-900 bg-transparent outline-none cursor-pointer text-base w-full truncate"
             >
-              {MARKETS.map((m) => (
-                <option key={m} value={m} className="bg-white text-gray-900">{m}</option>
+              {marketGroups.map((g) => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.options.map((m) => (
+                    <option key={m.symbol} value={m.name} className="bg-white text-gray-900">{m.name}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
             <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5">
@@ -351,41 +349,39 @@ export default function ManualTrader() {
         </div>
 
         {/* ============ DIGIT CIRCLES ============ */}
-        <div className="px-1 py-2">
-          <div className="grid grid-cols-5 gap-x-2 gap-y-6 mb-6">
+        <div className="px-1">
+          <div className="grid grid-cols-5 gap-x-2 gap-y-2 mb-2">
             {digitStats.slice(0, 5).map((d) => (
               <DigitGauge
                 key={d.digit}
                 digit={d.digit}
                 pct={d.pct}
-                maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
-                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
+                kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
             ))}
           </div>
-          <div className="grid grid-cols-5 gap-x-2 gap-y-6">
+          <div className="grid grid-cols-5 gap-x-2 gap-y-2">
             {digitStats.slice(5, 10).map((d) => (
               <DigitGauge
                 key={d.digit}
                 digit={d.digit}
                 pct={d.pct}
-                maxPct={maxPct}
                 isCurrent={d.digit === currentDigit}
-                kind={d.digit === highestDigit ? 'high' : lowestDigits.includes(d.digit) ? 'low' : 'normal'}
+                kind={d.digit === highestDigit ? 'high' : d.digit === lowestDigit ? 'low' : 'normal'}
               />
             ))}
           </div>
         </div>
 
         {/* ============ TRADE TICKET ============ */}
-        <div className="bg-[#eeedeb] rounded-xl border border-gray-200 p-3 space-y-3">
+        <div className="bg-[#eeedeb] rounded-xl border border-gray-200 p-2 sm:p-3 space-y-2 sm:space-y-3">
 
           {/* Trade type + Digit */}
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowTypePicker(true)}
-              className="flex-1 flex items-center gap-3 px-3 py-3 bg-white border border-gray-200 rounded-lg text-left"
+              className="flex-1 flex items-center gap-3 px-3 py-2 sm:py-3 bg-white border border-gray-200 rounded-lg text-left"
             >
               <span className="text-lg">
                 {tradeType === 'evenodd' ? '🎯' :
@@ -401,7 +397,7 @@ export default function ManualTrader() {
             </button>
 
             {(tradeType === 'matchesdiffers' || tradeType === 'overunder') && (
-              <div className="flex items-center gap-1 px-3 py-3 bg-white border border-gray-200 rounded-lg">
+              <div className="flex items-center gap-1 px-3 py-2 sm:py-3 bg-white border border-gray-200 rounded-lg">
                 <span className="text-xs text-gray-500">Digit:</span>
                 <input
                   type="number"
@@ -419,24 +415,24 @@ export default function ManualTrader() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => adjustStake(-1)}
-              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
             >
               −
             </button>
-            <div className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg py-2.5">
+            <div className="flex-1 flex items-center justify-center bg-white border border-gray-200 rounded-lg py-1.5 sm:py-2.5">
               <input
                 type="number"
                 step="0.5"
                 min="0.35"
                 value={stake}
                 onChange={(e) => setStake(Math.max(0.35, Number(e.target.value) || 0.35))}
-                className="bg-transparent text-gray-900 font-bold text-2xl text-center outline-none w-28"
+                className="bg-transparent text-gray-900 font-bold text-xl sm:text-2xl text-center outline-none w-28"
               />
               <span className="text-gray-500 text-sm ml-2">USD</span>
             </div>
             <button
               onClick={() => adjustStake(1)}
-              className="w-12 h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg bg-white border border-gray-200 text-gray-800 text-xl font-bold hover:bg-gray-50 transition flex items-center justify-center"
             >
               +
             </button>
@@ -448,7 +444,7 @@ export default function ManualTrader() {
               <button
                 key={amount}
                 onClick={() => setStake(amount)}
-                className={`flex-1 py-1.5 rounded text-xs font-semibold transition ${
+                className={`flex-1 py-1 sm:py-1.5 rounded text-xs font-semibold transition ${
                   stake === amount
                     ? 'bg-[#4db3b0] text-white'
                     : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -459,6 +455,65 @@ export default function ManualTrader() {
             ))}
           </div>
 
+          {/* Action Buttons */}
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleTrade('primary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#4db3b0] text-white py-3 sm:py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{primaryLabel}</span>
+              </div>
+              <div className="bg-[#3b9a97] text-white py-1.5 sm:py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => handleTrade('secondary')}
+              disabled={buttonsDisabled}
+              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
+            >
+              <div className="bg-[#ff1f1f] text-white py-3 sm:py-4 flex items-center justify-center gap-2">
+                <span className="font-bold text-lg">{secondaryLabel}</span>
+              </div>
+              <div className="bg-[#d94a3d] text-white py-1.5 sm:py-2 text-xs flex items-center justify-between px-4">
+                <span>Payout</span>
+                <span className="font-bold">
+                  {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
+                </span>
+              </div>
+            </button>
+          </div>
+
+          {/* Target reached banner */}
+          {targetReached && (
+            <div className={`rounded-lg p-3 text-center ${
+              targetReached === 'tp' ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
+            }`}>
+              <span className={`text-xs font-medium ${
+                targetReached === 'tp' ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
+              </span>
+            </div>
+          )}
+
+          {/* More options (folded away so the phone screen fits without scrolling) */}
+          <button
+            onClick={() => setShowMore((v) => !v)}
+            className="w-full text-xs py-2 text-gray-600 hover:text-gray-900 bg-white border border-gray-200 rounded-lg transition"
+          >
+            {showMore ? '▲ Hide options' : '▼ More options · Take Profit · Stop Loss · Auto-Trade · Journal'}
+            {!showMore && autoTrade ? '  ● Auto-Trade ON' : ''}
+          </button>
+
+          {showMore && (
+            <div className="space-y-2 sm:space-y-3">
           {/* TP/SL Row */}
           <div className="bg-white border border-gray-200 rounded-lg p-3">
             <div className="grid grid-cols-2 gap-3">
@@ -590,54 +645,6 @@ export default function ManualTrader() {
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => handleTrade('primary')}
-              disabled={buttonsDisabled}
-              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
-            >
-              <div className="bg-[#4db3b0] text-white py-4 flex items-center justify-center gap-2">
-                <span className="font-bold text-lg">{primaryLabel}</span>
-              </div>
-              <div className="bg-[#3b9a97] text-white py-2 text-xs flex items-center justify-between px-4">
-                <span>Payout</span>
-                <span className="font-bold">
-                  {primaryPayout !== null ? `${primaryPayout.toFixed(2)} USD` : '...'}
-                </span>
-              </div>
-            </button>
-
-            <button
-              onClick={() => handleTrade('secondary')}
-              disabled={buttonsDisabled}
-              className={`rounded-lg overflow-hidden transition ${buttonsDisabled ? 'opacity-50' : 'hover:opacity-90'}`}
-            >
-              <div className="bg-[#ff1f1f] text-white py-4 flex items-center justify-center gap-2">
-                <span className="font-bold text-lg">{secondaryLabel}</span>
-              </div>
-              <div className="bg-[#d94a3d] text-white py-2 text-xs flex items-center justify-between px-4">
-                <span>Payout</span>
-                <span className="font-bold">
-                  {secondaryPayout !== null ? `${secondaryPayout.toFixed(2)} USD` : '...'}
-                </span>
-              </div>
-            </button>
-          </div>
-
-          {/* Target reached banner */}
-          {targetReached && (
-            <div className={`rounded-lg p-3 text-center ${
-              targetReached === 'tp' ? 'bg-green-50 border border-green-300' : 'bg-red-50 border border-red-300'
-            }`}>
-              <span className={`text-xs font-medium ${
-                targetReached === 'tp' ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {targetReached === 'tp' ? '🎯 Take Profit hit!' : '🛑 Stop Loss hit!'} Tap Reset to continue.
-              </span>
-            </div>
-          )}
-
           {/* Journal Toggle */}
           <button
             onClick={() => setShowJournal(!showJournal)}
@@ -668,6 +675,8 @@ export default function ManualTrader() {
                   </div>
                 ))
               )}
+            </div>
+          )}
             </div>
           )}
         </div>
@@ -702,62 +711,65 @@ export default function ManualTrader() {
   );
 }
 
-/* ---------- Digit Gauge ---------- */
+/* ---------- Digit Gauge (same look as Bulk Trader) ---------- */
 function DigitGauge({
   digit,
   pct,
-  maxPct,
   isCurrent,
   kind,
 }: {
   digit: number;
   pct: number;
-  maxPct: number;
   isCurrent: boolean;
   kind: 'high' | 'low' | 'normal';
 }) {
-  const r = 21;
-  const C = 2 * Math.PI * r;
+  const R = 22;
+  const C = 2 * Math.PI * R;
+  const dash = (Math.min(100, Math.max(0, pct)) / 100) * C;
 
-  // Arc covers up to half the circle (most frequent digit = half), centred at the bottom
-  const frac = maxPct > 0 ? Math.min(pct / maxPct, 1) * 0.5 : 0;
-  const dash = frac * C;
-  const arcDeg = frac * 360;
-  const rotation = 90 - arcDeg / 2;
-
-  const color = kind === 'high' ? '#3aa8a6' : kind === 'low' ? '#ef1c1c' : '#bdbdbd';
-  const sizeClass = kind === 'high' ? 'w-[72px] h-[72px]' : 'w-16 h-16';
+  const wedgeColor = kind === 'high' ? '#14b8a6' : kind === 'low' ? '#ef4444' : '#b4b8be';
+  const ringColor = kind === 'high' ? '#14b8a6' : kind === 'low' ? '#ef4444' : '#d9dce0';
 
   return (
-    <div className="flex justify-center">
-      <div className={`relative ${sizeClass}`}>
-        <svg viewBox="0 0 56 56" className="absolute inset-0 w-full h-full">
-          <circle cx="28" cy="28" r={r} fill="#ffffff" stroke="#dedede" strokeWidth="4" />
+    <div className="relative flex flex-col items-center">
+      {isCurrent && (
+        <div
+          className="absolute -top-2 left-1/2 -translate-x-1/2 z-10 w-0 h-0"
+          style={{
+            borderLeft: '6px solid transparent',
+            borderRight: '6px solid transparent',
+            borderTop: '8px solid #ef4444',
+          }}
+        />
+      )}
+      <div className="relative w-full max-w-[52px] sm:max-w-[72px] aspect-square rounded-full">
+        <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
+          {/* track (coloured for most / least appearing digit) */}
+          <circle cx="50" cy="50" r="46" fill="#f3f4f6" stroke={ringColor} strokeWidth="8" />
+          {/* filled wedge (percentage of full circle) */}
           <circle
-            cx="28"
-            cy="28"
-            r={r}
+            cx="50"
+            cy="50"
+            r={R}
             fill="none"
-            stroke={color}
-            strokeWidth={kind === 'high' ? 5 : 4}
+            stroke={wedgeColor}
+            strokeWidth={R * 2}
             strokeDasharray={`${dash} ${C}`}
-            transform={`rotate(${rotation} 28 28)`}
+            transform="rotate(-90 50 50)"
+            opacity="0.85"
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
-          <span className="text-base font-bold text-gray-900">{digit}</span>
-          <span className="text-[10px] font-semibold text-gray-600">{pct.toFixed(1)}%</span>
+          <span className="text-sm sm:text-base font-bold text-navy">{digit}</span>
+          <span className="text-[9px] sm:text-[10px] font-bold text-navy">{fmtPct(pct)}</span>
         </div>
-        {isCurrent && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 -bottom-3 w-0 h-0"
-            style={{
-              borderLeft: '6px solid transparent',
-              borderRight: '6px solid transparent',
-              borderBottom: '8px solid #ff5a3c',
-            }}
-          />
-        )}
+      </div>
+      <div
+        className={`h-3.5 sm:h-4 mt-0.5 sm:mt-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-wide ${
+          kind === 'high' ? 'text-teal-600' : kind === 'low' ? 'text-red-500' : ''
+        }`}
+      >
+        {kind === 'high' ? 'Most' : kind === 'low' ? 'Least' : ''}
       </div>
     </div>
   );
